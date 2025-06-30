@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import axios, { AxiosInstance } from 'axios';
 import { LoggerLevel } from './logger';
-const { functionLimiter } = require('./limiter');
+import { functionLimiter } from './limiter';
 
 /**
  * Client 初始化配置
