@@ -2,7 +2,8 @@
     "name": "apaas-oapi-client",
     "version": "0.1.0",
     "exports": {
-        "./node-sdk": "./dist/index.js"
+        "./node-sdk": "./dist/index.js",
+        ".": "./dist/index.js"
     },
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
