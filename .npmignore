@@ -1,0 +1,7 @@
+test/
+examples/
+init.sh
+jest.config.js
+rollup.config.js
+tsconfig.json
+*.sh
