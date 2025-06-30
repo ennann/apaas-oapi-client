@@ -1,6 +1,25 @@
+# Node.js
+node_modules/
 dist/
-node_modules
-dist
+coverage/
 .env
+.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
 .DS_Store
-npm-debug.log
+
+# IDEs
+.idea/
+.vscode/
+
+# Build
+build/
+*.tsbuildinfo
+
+# Optional
+*.tgz
