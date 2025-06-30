@@ -20,8 +20,11 @@ describe('aPaaS SDK', () => {
         try {
             await client.init();
         } catch (err) {
-            console.error('Error initializing client:', err.message);
-            // 不抛出错误，避免 CI fail
+            if (err instanceof Error) {
+                console.error('Error initializing client:', err.message);
+            } else {
+                console.error('Unknown error initializing client:', err);
+            }
         }
     });
 });
