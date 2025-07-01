@@ -30,9 +30,6 @@ jobs:
       - name: Run Tests
         run: npm test
 
-      - name: Debug npm token
-        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc && cat ~/.npmrc
-
       - name: Publish to npm
         run: npm publish --access public
         env:
