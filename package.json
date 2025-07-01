@@ -11,7 +11,7 @@
         "build": "rollup -c",
         "test": "jest",
         "dev": "ts-node src/index.ts",
-        "release": "npm run build && git add . && git commit -m 'chore(release): publish new version' && npm version patch && git push origin main --follow-tags && npm publish --access public"
+        "release": "npm run build && git add . && git commit -m 'chore(release): publish new version' && npm version patch && git push origin main --follow-tags"
     },
     "keywords": [],
     "author": "",
