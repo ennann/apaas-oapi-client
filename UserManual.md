@@ -7,8 +7,10 @@ aPaaS 平台有完整的 Open API 能力，但是目前这些能力全都以单�
 
 - ✅ 获取 accessToken，自动管理 token 有效期
 	
-- ✅ record 单条查询、 records 记录列表查询（支持分页迭代）
-	
+- ✅ record 单条查询、批量查询（支持分页迭代）
+
+- ✅ record 单条创建、批量创建（支持分页迭代）
+
 - ✅ record 单条更新、批量更新
 	
 - ✅ record 单条删除、批量删除
@@ -151,6 +153,42 @@ console.log('Items:', items);
 
 <br>
 
+
+***
+
+## **➕ 创建接口**
+
+### **单条创建**
+
+```JavaScript
+const res = await client.object.create.record({
+  object_name: 'object_event_log',
+  record: {
+    name: 'Sample text',
+    content: 'Sample text'
+  }
+});
+console.log(res);
+```
+
+### **批量创建**
+
+> ⚠️ 每次最多创建 100 条，SDK 已自动分组限流
+
+```JavaScript
+const { total, items } = await client.object.create.recordsWithIterator({
+  object_name: 'object_event_log',
+  records: [
+    { name: 'Sample text 1', content: 'Sample text 1' },
+    { name: 'Sample text 2', content: 'Sample text 2' }
+  ]
+});
+console.log('Total:', total);
+console.log('Items:', items);
+```
+
+
+<br>
 ## **✏️ 更新接口**
 
 ### **单条更新**
@@ -249,3 +287,65 @@ console.log(client.currentNamespace);
 > 由 [aPaaS OAPI Client SDK](https://www.npmjs.com/package/apaas-oapi-client) 提供支持，如有问题请提交 Issue 反馈。
 
 <br>
+***
+
+## **📊 对象元数据接口**
+
+### **获取指定对象字段元数据**
+
+```JavaScript
+const res = await client.object.metadata.field({
+  object_name: '_user',
+  field_name: '_id'
+});
+console.log(res);
+```
+
+### **获取指定对象所有字段信息**
+
+```JavaScript
+const res = await client.object.metadata.fields({
+  object_name: 'object_store'
+});
+console.log(res);
+```
+
+***
+
+## **🏢 部门 ID 交换**
+
+### **单个部门 ID 交换**
+
+```JavaScript
+const res = await client.department.exchange({
+  department_id_type: 'external_department_id',
+  department_id: 'Y806608904'
+});
+console.log(res);
+```
+
+### **批量部门 ID 交换**
+
+每次最多 100 个，SDK 已自动拆分限流。
+
+```JavaScript
+const res = await client.department.batchExchange({
+  department_id_type: 'external_department_id',
+  department_ids: ['id1', 'id2', 'id3']
+});
+console.log(res);
+```
+
+***
+
+## **☁️ 云函数调用**
+
+```JavaScript
+const res = await client.function.invoke({
+  name: 'StoreMemberUpdate',
+  params: { key: 'value' }
+});
+console.log(res);
+```
+
+---
