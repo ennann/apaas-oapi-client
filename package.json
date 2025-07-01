@@ -1,6 +1,6 @@
 {
     "name": "apaas-oapi-client",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "exports": {
         "./node-sdk": "./dist/index.js"
     },
@@ -12,7 +12,6 @@
         "test": "jest",
         "dev": "ts-node src/index.ts",
         "release": "npm run build && git add . && git commit -m 'chore(release): publish new version' && npm version patch && git push origin main --follow-tags && npm publish --access public"
-
     },
     "keywords": [],
     "author": "",
