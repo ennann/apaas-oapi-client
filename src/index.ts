@@ -140,6 +140,30 @@ class Client {
     }
 
     /**
+     * 获取当前 token 剩余过期时间（单位：秒）
+     * @returns 剩余秒数，若无 token 则返回 null
+     */
+    get tokenExpireTime() {
+        if (!this.accessToken || !this.expireTime) {
+            this.log(LoggerLevel.warn, '[client] no valid token');
+            return null;
+        }
+
+        const now = dayjs().valueOf();
+        const remainMs = this.expireTime - now;
+
+        if (remainMs <= 0) {
+            this.log(LoggerLevel.warn, '[client] token expired');
+            return 0;
+        }
+
+        const remainSeconds = Math.floor(remainMs / 1000);
+        this.log(LoggerLevel.debug, `[client] token expire time: ${remainSeconds} seconds remaining`);
+        this.log(LoggerLevel.trace, `[client] token expire time: ${remainSeconds} seconds remaining, expireTime=${this.expireTime}, now=${now}`);
+        return remainSeconds;
+    }
+
+    /**
      * 获取当前 namespace
      */
     get currentNamespace() {
