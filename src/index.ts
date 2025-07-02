@@ -283,17 +283,17 @@ class Client {
                 let nextPageToken: string | undefined = '';
                 let total = 0;
                 let page = 0;
+                let totalPages = 0;
 
-                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_query`;
+                const pageSize = data.page_size || 100;
 
                 do {
                     const pageRes = await functionLimiter(async () => {
                         const mergedData = { ...data, page_token: nextPageToken || '' };
 
-                        await this.ensureTokenValid();
-
-                        const res = await this.axiosInstance.post(url, mergedData, {
-                            headers: { Authorization: `${this.accessToken}` }
+                        const res = await this.object.search.records({
+                            object_name,
+                            data: mergedData
                         });
 
                         page += 1;
@@ -304,18 +304,20 @@ class Client {
 
                         if (page === 1) {
                             total = res.data.total || 0;
-                            this.log(LoggerLevel.info, `[批量查询记录] 🔍 object_name=${object_name}, 接口返回 total: ${total}`);
+                            totalPages = Math.ceil(total / pageSize);
+                            this.log(LoggerLevel.info, `[批量查询记录] 🔍 查询 object_name=${object_name}, 接口返回 total=${total}, 预计 ${totalPages} 页`);
                         }
 
-                        const totalPages = Math.ceil(total / (data.page_size || 100));
-                        const padLength = String(totalPages).length;
+                        nextPageToken = res.data.next_page_token;
 
-                        this.log(LoggerLevel.info, `[批量查询记录] 🔍 [${String(page).padStart(padLength, '0')}/${totalPages}] 接口调用完成`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${res.data?.next_page_token || ''}`);
+                        const padLength = totalPages.toString().length;
+                        const pageStr = page.toString().padStart(padLength, '0');
+                        const totalPagesStr = totalPages.toString().padStart(padLength, '0');
+
+                        this.log(LoggerLevel.info, `[批量查询记录] 🔍 [${pageStr}/${totalPagesStr}] 接口调用完成`);
+                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${nextPageToken || ''}`);
                         this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items?.length}`);
                         this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data?.items)}`);
-
-                        nextPageToken = res.data.next_page_token;
 
                         return res;
                     });
