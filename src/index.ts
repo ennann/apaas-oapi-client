@@ -311,9 +311,9 @@ class Client {
                         const padLength = String(totalPages).length;
 
                         this.log(LoggerLevel.info, `[批量查询记录] 🔍 [${String(page).padStart(padLength, '0')}/${totalPages}] 接口调用完成`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${res.data.next_page_token || ''}`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items.length}`);
-                        this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data.items)}`);
+                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${res.data?.next_page_token || ''}`);
+                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items?.length}`);
+                        this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data?.items)}`);
 
                         nextPageToken = res.data.next_page_token;
 
