@@ -284,13 +284,16 @@ class Client {
                 let total = 0;
                 let page = 0;
 
+                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_query`;
+
                 do {
                     const pageRes = await functionLimiter(async () => {
                         const mergedData = { ...data, page_token: nextPageToken || '' };
 
-                        const res = await this.object.search.records({
-                            object_name,
-                            data: mergedData
+                        await this.ensureTokenValid();
+
+                        const res = await this.axiosInstance.post(url, mergedData, {
+                            headers: { Authorization: `${this.accessToken}` }
                         });
 
                         page += 1;
@@ -301,14 +304,19 @@ class Client {
 
                         if (page === 1) {
                             total = res.data.total || 0;
-                            this.log(LoggerLevel.info, '[批量查询记录] 🔍 查询object_name=${object_name}, 接口返回 total:', total);
+                            this.log(LoggerLevel.info, `[批量查询记录] 🔍 object_name=${object_name}, 接口返回 total: ${total}`);
                         }
+
+                        const totalPages = Math.ceil(total / (data.page_size || 100));
+                        const padLength = String(totalPages).length;
+
+                        this.log(LoggerLevel.info, `[批量查询记录] 🔍 [${String(page).padStart(padLength, '0')}/${totalPages}] 接口调用完成`);
+                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${res.data.next_page_token || ''}`);
+                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items.length}`);
+                        this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data.items)}`);
 
                         nextPageToken = res.data.next_page_token;
 
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${nextPageToken || ''}`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items.length}`);
-                        this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data.items)}`);
                         return res;
                     });
                 } while (nextPageToken);
