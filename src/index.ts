@@ -30,16 +30,6 @@ interface TokenResponse {
 }
 
 /**
- * records_query 接口请求参数
- */
-interface RecordsQueryParams {
-    /** 对象名称, 例如 object_store */
-    object_name: string;
-    /** 请求体数据 */
-    data: any;
-}
-
-/**
  * aPaaS OpenAPI 客户端
  */
 class Client {
@@ -164,6 +154,7 @@ class Client {
         metadata: {
             /**
              * 获取指定对象下指定字段的元数据
+             * @description 查询指定对象下的单个字段元数据
              * @param params 请求参数 { object_name, field_name }
              * @returns 接口返回结果
              */
@@ -185,6 +176,7 @@ class Client {
 
             /**
              * 获取指定对象的所有字段信息
+             * @description 查询指定对象下的所有字段元数据
              * @param params 请求参数 { object_name }
              * @returns 接口返回结果
              */
@@ -208,6 +200,7 @@ class Client {
         search: {
             /**
              * 单条记录查询
+             * @description 查询指定对象下的单条记录
              * @param params 请求参数
              * @returns 接口返回结果
              */
@@ -232,11 +225,12 @@ class Client {
             },
 
             /**
-             * records_query 接口
+             * 多条记录查询 - 最多传入 100 条
+             * @description 查询指定对象下的多条记录
              * @param params 请求参数
              * @returns 接口返回结果
              */
-            records: async (params: RecordsQueryParams): Promise<any> => {
+            records: async (params: { object_name: string; data: any }): Promise<any> => {
                 const { object_name, data } = params;
                 await this.ensureTokenValid();
 
@@ -253,11 +247,12 @@ class Client {
             },
 
             /**
-             * 分页查询所有记录
+             * 查询所有记录 - 支持超过 100 条数据，自动分页查询
+             * @description 该方法会自动处理分页，直到没有更多数据为止
              * @param params 请求参数
              * @returns { total, items }
              */
-            recordsWithIterator: async (params: RecordsQueryParams): Promise<{ total: number; items: any[] }> => {
+            recordsWithIterator: async (params: { object_name: string; data: any }): Promise<{ total: number; items: any[] }> => {
                 const { object_name, data } = params;
 
                 let results: any[] = [];
@@ -301,6 +296,7 @@ class Client {
         create: {
             /**
              * 单条记录创建
+             * @description 创建单条记录到指定对象中
              * @param params 请求参数 { object_name, record }
              * @returns 接口返回结果
              */
@@ -332,7 +328,8 @@ class Client {
             },
 
             /**
-             * 批量创建记录
+             * 批量创建记录 - 最多传入 100 条
+             * @description 创建多条记录到指定对象中
              * @param params 请求参数 { object_name, records }
              * @returns 接口返回结果
              */
@@ -357,7 +354,8 @@ class Client {
             },
 
             /**
-             * 分批创建所有记录
+             * 分批创建所有记录 - 支持超过 100 条数据，自动拆分
+             * @description 创建多条记录到指定对象中，超过 100 条数据会自动拆分为多次请求
              * @param params 请求参数 { object_name, records }
              * @returns { total, items }
              */
@@ -408,6 +406,7 @@ class Client {
         update: {
             /**
              * 单条更新
+             * @description 更新指定对象下的单条记录
              * @param params 请求参数
              * @returns 接口返回结果
              */
@@ -432,11 +431,33 @@ class Client {
             },
 
             /**
-             * 批量更新
+             * 多条更新 - 最多传入 100 条
+             * @description 更新指定对象下的多条记录
+             * @param params 请求参数
+             * @returns 接口返回结果
+             */
+            records: async (params: { object_name: string; records: any[] }): Promise<any> => {
+                const { object_name, records } = params;
+                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/records_batch`;
+
+                this.log(LoggerLevel.info, `[多条更新记录] 💾 开始更新 ${records.length} 条数据`);
+
+                const response = await this.axiosInstance.patch(url, { records }, { headers: { Authorization: `${this.accessToken}` } });
+
+                this.log(LoggerLevel.info, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成`);
+                this.log(LoggerLevel.debug, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成, 返回状态: ${response.data.code}`);
+                this.log(LoggerLevel.trace, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+
+                return response.data;
+            },
+
+            /**
+             * 批量更新 - 支持超过 100 条数据，自动拆分
+             * @description 更新指定对象下的多条记录，超过 100 条数据会自动拆分为多次请求
              * @param params 请求参数
              * @returns 所有子请求的返回结果数组
              */
-            recordsBatchUpdate: async (params: { object_name: string; records: any[] }): Promise<any[]> => {
+            recordsWithIterator: async (params: { object_name: string; records: any[] }): Promise<any[]> => {
                 const { object_name, records } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
@@ -474,6 +495,7 @@ class Client {
         delete: {
             /**
              * 单条删除
+             * @description 删除指定对象下的单条记录
              * @param params 请求参数
              * @returns 接口返回结果
              */
@@ -498,11 +520,42 @@ class Client {
             },
 
             /**
+             * 多条删除 - 最多传入 100 条
+             * @description 删除指定对象下的多条记录
+             * @param params 请求参数
+             * @returns 接口返回结果
+             */
+            records: async (params: { object_name: string; ids: string[] }): Promise<any> => {
+                const { object_name, ids } = params;
+                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
+
+                this.log(LoggerLevel.info, `[批量删除记录] 🗑️ 开始删除对象 ${object_name} 的 ${ids.length} 条记录`);
+
+                const res = await functionLimiter(async () => {
+                    await this.ensureTokenValid();
+
+                    const response = await this.axiosInstance.delete(url, {
+                        data: { ids },
+                        headers: { Authorization: `${this.accessToken}`, 'Content-Type': 'application/json' }
+                    });
+
+                    this.log(LoggerLevel.info, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成`);
+                    this.log(LoggerLevel.debug, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成，返回状态: ${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成，返回信息: ${JSON.stringify(response.data)}`);
+
+                    return response.data;
+                });
+
+                return res;
+            },
+
+            /**
              * 批量删除
+             * @description 删除指定对象下的多条记录，超过 100 条数据会自动拆分为多次请求
              * @param params 请求参数
              * @returns 所有子请求的返回结果数组
              */
-            recordsBatchDelete: async (params: { object_name: string; ids: string[] }): Promise<any[]> => {
+            recordsWithIterator: async (params: { object_name: string; ids: string[] }): Promise<any[]> => {
                 const { object_name, ids } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
