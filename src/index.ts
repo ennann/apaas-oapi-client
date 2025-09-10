@@ -175,6 +175,32 @@ class Client {
      * 对象模块
      */
     public object = {
+        /**
+         * 列出所有对象（数据表）
+         * @param params 请求参数 { offset, filter?, limit }
+         * @returns 接口返回结果
+         */
+        list: async (params: { offset: number; filter?: { type?: string; quickQuery?: string }; limit: number }): Promise<any> => {
+            const { offset, filter, limit } = params;
+            await this.ensureTokenValid();
+            const url = `/api/data/v1/namespaces/${this.namespace}/meta/objects/list`;
+
+            this.log(LoggerLevel.debug, `[对象列表查询] 📋 开始获取对象列表, offset=${offset}, limit=${limit}`);
+
+            const requestData: any = { offset, limit };
+            if (filter) {
+                requestData.filter = filter;
+            }
+
+            const res = await this.axiosInstance.post(url, requestData, {
+                headers: { Authorization: `${this.accessToken}` }
+            });
+
+            this.log(LoggerLevel.debug, `[对象列表查询] 📋 获取对象列表调用完成, 返回状态=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[对象列表查询] 📋 获取对象列表调用完成, 返回信息=${JSON.stringify(res.data)}`);
+            return res.data;
+        },
+
         metadata: {
             /**
              * 获取指定对象下指定字段的元数据
