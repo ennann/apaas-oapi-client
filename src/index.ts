@@ -264,7 +264,7 @@ class Client {
                     headers: { Authorization: `${this.accessToken}` }
                 });
 
-                this.log(LoggerLevel.info, `[批量查询记录] 🔍 接口调用完成`);
+                // this.log(LoggerLevel.info, `[批量查询记录] 🔍 接口调用完成`);
                 this.log(LoggerLevel.debug, `[批量查询记录] 🔍 查询 object_name=${object_name}, 调用完成, 返回状态: ${res.data.code}, 返回数据总数${res.data?.data?.total || 'unknown'}`);
                 this.log(LoggerLevel.trace, `[批量查询记录] 🔍 查询 object_name=${object_name}, 调用完成, 返回信息: ${JSON.stringify(res.data)}`);
                 return res.data;
