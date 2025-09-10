@@ -56,7 +56,7 @@ class Client {
             baseURL: 'https://ae-openapi.feishu.cn',
             headers: { 'Content-Type': 'application/json' }
         });
-        this.log(LoggerLevel.info, '[client] initialized');
+        this.log(LoggerLevel.info, '[client] Client initialized successfully');
     }
 
     /**
@@ -65,7 +65,7 @@ class Client {
      */
     setLoggerLevel(level: LoggerLevel) {
         this.loggerLevel = level;
-        this.log(LoggerLevel.info, `[logger] logger level set to ${LoggerLevel[level]}`);
+        this.log(LoggerLevel.info, `[logger] Log level set to ${LoggerLevel[level]}`);
     }
 
     /**
@@ -86,7 +86,7 @@ class Client {
      */
     async init() {
         await this.ensureTokenValid();
-        this.log(LoggerLevel.info, '[client] ready');
+        this.log(LoggerLevel.info, '[client] Client initialized and ready');
     }
 
     /**
@@ -100,13 +100,13 @@ class Client {
         });
 
         if (res.data.code !== '0') {
-            this.log(LoggerLevel.error, `[fetch token] 获取 accessToken 失败: ${res.data.msg}`);
+            this.log(LoggerLevel.error, `[auth] Failed to fetch access token: ${res.data.msg}`);
             throw new Error(`获取 accessToken 失败: ${res.data.msg}`);
         }
 
         this.accessToken = res.data.data.accessToken;
         this.expireTime = res.data.data.expireTime;
-        this.log(LoggerLevel.info, '[client] token refreshed');
+        this.log(LoggerLevel.info, '[auth] Access token refreshed successfully');
     }
 
     /**
@@ -114,20 +114,20 @@ class Client {
      */
     private async ensureTokenValid() {
         if (this.disableTokenCache) {
-            this.log(LoggerLevel.debug, '[client] token cache disabled, refreshing token');
+            this.log(LoggerLevel.debug, '[auth] Token cache disabled, refreshing token');
             await this.getAccessToken();
             return;
         }
 
         if (!this.accessToken || !this.expireTime) {
-            this.log(LoggerLevel.debug, '[client] no token cached, fetching new token');
+            this.log(LoggerLevel.debug, '[auth] No token cached, fetching new token');
             await this.getAccessToken();
             return;
         }
 
         const now = dayjs().valueOf();
         if (now + 60 * 1000 > this.expireTime) {
-            this.log(LoggerLevel.debug, '[client] token expired, refreshing');
+            this.log(LoggerLevel.debug, '[auth] Token expired, refreshing');
             await this.getAccessToken();
         }
     }
@@ -145,7 +145,7 @@ class Client {
      */
     get tokenExpireTime() {
         if (!this.accessToken || !this.expireTime) {
-            this.log(LoggerLevel.warn, '[client] no valid token');
+            this.log(LoggerLevel.warn, '[auth] No valid token available');
             return null;
         }
 
@@ -153,13 +153,13 @@ class Client {
         const remainMs = this.expireTime - now;
 
         if (remainMs <= 0) {
-            this.log(LoggerLevel.warn, '[client] token expired');
+            this.log(LoggerLevel.warn, '[auth] Token has expired');
             return 0;
         }
 
         const remainSeconds = Math.floor(remainMs / 1000);
-        this.log(LoggerLevel.debug, `[client] token expire time: ${remainSeconds} seconds remaining`);
-        this.log(LoggerLevel.trace, `[client] token expire time: ${remainSeconds} seconds remaining, expireTime=${this.expireTime}, now=${now}`);
+        this.log(LoggerLevel.debug, `[auth] Token expires in ${remainSeconds} seconds`);
+        this.log(LoggerLevel.trace, `[auth] Token expiry details: remaining=${remainSeconds}s, expireTime=${this.expireTime}, now=${now}`);
         return remainSeconds;
     }
 
@@ -167,7 +167,7 @@ class Client {
      * 获取当前 namespace
      */
     get currentNamespace() {
-        this.log(LoggerLevel.debug, `🏷️ [获取命名空间] 当前命名空间: ${this.namespace}`);
+        this.log(LoggerLevel.debug, `[namespace] Current namespace: ${this.namespace}`);
         return this.namespace;
     }
 
@@ -185,7 +185,7 @@ class Client {
             await this.ensureTokenValid();
             const url = `/api/data/v1/namespaces/${this.namespace}/meta/objects/list`;
 
-            this.log(LoggerLevel.debug, `[对象列表查询] 📋 开始获取对象列表, offset=${offset}, limit=${limit}`);
+            this.log(LoggerLevel.debug, `[object.list] Fetching objects list: offset=${offset}, limit=${limit}`);
 
             const requestData: any = { offset, limit };
             if (filter) {
@@ -196,8 +196,8 @@ class Client {
                 headers: { Authorization: `${this.accessToken}` }
             });
 
-            this.log(LoggerLevel.debug, `[对象列表查询] 📋 获取对象列表调用完成, 返回状态=${res.data.code}`);
-            this.log(LoggerLevel.trace, `[对象列表查询] 📋 获取对象列表调用完成, 返回信息=${JSON.stringify(res.data)}`);
+            this.log(LoggerLevel.debug, `[object.list] Objects list fetched successfully: code=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[object.list] Response: ${JSON.stringify(res.data)}`);
             return res.data;
         },
 
@@ -213,14 +213,14 @@ class Client {
                 await this.ensureTokenValid();
                 const url = `/api/data/v1/namespaces/${this.namespace}/meta/objects/${object_name}/fields/${field_name}`;
 
-                this.log(LoggerLevel.debug, `[对象字段查询] 📄 开始获取字段元数据, object_name=${object_name}, field_name=${field_name}`);
+                this.log(LoggerLevel.debug, `[object.metadata.field] Fetching field metadata: ${object_name}.${field_name}`);
 
                 const res = await this.axiosInstance.get(url, {
                     headers: { Authorization: `${this.accessToken}` }
                 });
 
-                this.log(LoggerLevel.debug, `[对象字段查询] 📄 object_name=${object_name}, field_name=${field_name}, 调用完成, 返回状态=${res.data.code}`);
-                this.log(LoggerLevel.trace, `[对象字段查询] 📄 object_name=${object_name}, field_name=${field_name}, 返回信息=${JSON.stringify(res.data)}`);
+                this.log(LoggerLevel.debug, `[object.metadata.field] Field metadata fetched: ${object_name}.${field_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[object.metadata.field] Response: ${JSON.stringify(res.data)}`);
                 return res.data;
             },
 
@@ -235,14 +235,14 @@ class Client {
                 await this.ensureTokenValid();
                 const url = `/api/data/v1/namespaces/${this.namespace}/meta/objects/${object_name}`;
 
-                this.log(LoggerLevel.debug, `[对象字段查询] 📄 开始获取对象字段元数据 object_name=${object_name}`);
+                this.log(LoggerLevel.debug, `[object.metadata.fields] Fetching all fields metadata: ${object_name}`);
 
                 const res = await this.axiosInstance.get(url, {
                     headers: { Authorization: `${this.accessToken}` }
                 });
 
-                this.log(LoggerLevel.debug, `[对象字段查询] 📄 object_name=${object_name}, 调用完成, 返回状态=${res.data.code}`);
-                this.log(LoggerLevel.trace, `[对象字段查询] 📄 object_name=${object_name}, 调用完成, 返回信息=${JSON.stringify(res.data)}`);
+                this.log(LoggerLevel.debug, `[object.metadata.fields] All fields metadata fetched: ${object_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[object.metadata.fields] Response: ${JSON.stringify(res.data)}`);
                 return res.data;
             }
         },
@@ -258,15 +258,15 @@ class Client {
                 const { object_name, record_id, select } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/${record_id}`;
 
-                this.log(LoggerLevel.info, `[单条查询记录] 🔍 开始查询 record_id: ${record_id}`);
+                this.log(LoggerLevel.info, `[object.search.record] Querying record: ${record_id}`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
 
                     const response = await this.axiosInstance.post(url, { select }, { headers: { Authorization: `${this.accessToken}` } });
 
-                    this.log(LoggerLevel.debug, `[单条查询记录] 🔍 查询 object_name=${object_name}, record_id: ${record_id} 调用完成, 返回状态: ${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[单条查询记录] 🔍 查询 object_name=${object_name}, record_id: ${record_id} 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.debug, `[object.search.record] Record queried: ${object_name}.${record_id}, code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.search.record] Response: ${JSON.stringify(response.data)}`);
 
                     return response.data;
                 });
@@ -290,9 +290,8 @@ class Client {
                     headers: { Authorization: `${this.accessToken}` }
                 });
 
-                // this.log(LoggerLevel.info, `[批量查询记录] 🔍 接口调用完成`);
-                this.log(LoggerLevel.debug, `[批量查询记录] 🔍 查询 object_name=${object_name}, 调用完成, 返回状态: ${res.data.code}, 返回数据总数${res.data?.data?.total || 'unknown'}`);
-                this.log(LoggerLevel.trace, `[批量查询记录] 🔍 查询 object_name=${object_name}, 调用完成, 返回信息: ${JSON.stringify(res.data)}`);
+                this.log(LoggerLevel.debug, `[object.search.records] Records queried: ${object_name}, code=${res.data.code}, total=${res.data?.data?.total || 'unknown'}`);
+                this.log(LoggerLevel.trace, `[object.search.records] Response: ${JSON.stringify(res.data)}`);
                 return res.data;
             },
 
@@ -331,7 +330,7 @@ class Client {
                         if (page === 1) {
                             total = res.data.total || 0;
                             totalPages = Math.ceil(total / pageSize);
-                            this.log(LoggerLevel.info, `[批量查询记录] 🔍 查询 object_name=${object_name}, 接口返回 total=${total}, 预计 ${totalPages} 页`);
+                            this.log(LoggerLevel.info, `[object.search.recordsWithIterator] Starting paginated query: ${object_name}, total=${total}, pages=${totalPages}`);
                         }
 
                         nextPageToken = res.data.next_page_token;
@@ -340,10 +339,9 @@ class Client {
                         const pageStr = page.toString().padStart(padLength, '0');
                         const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
-                        this.log(LoggerLevel.info, `[批量查询记录] 🔍 [${pageStr}/${totalPagesStr}] 接口调用完成`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询, nextPageToken: ${nextPageToken || ''}`);
-                        this.log(LoggerLevel.debug, `[批量查询记录] 🔍 第 ${page} 页查询完成, items.length: ${res.data.items?.length}`);
-                        this.log(LoggerLevel.trace, `[批量查询记录] 🔍 第 ${page} 页查询结果: ${JSON.stringify(res.data?.items)}`);
+                        this.log(LoggerLevel.info, `[object.search.recordsWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
+                        this.log(LoggerLevel.debug, `[object.search.recordsWithIterator] Page ${page} details: items=${res.data.items?.length}, nextToken=${nextPageToken || 'none'}`);
+                        this.log(LoggerLevel.trace, `[object.search.recordsWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
                     });
@@ -364,7 +362,7 @@ class Client {
                 const { object_name, record } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records`;
 
-                this.log(LoggerLevel.info, `[单条创建记录] ➕ 开始向对象 ${object_name} 创建记录`);
+                this.log(LoggerLevel.info, `[object.create.record] Creating record in: ${object_name}`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
@@ -377,9 +375,9 @@ class Client {
                         }
                     );
 
-                    this.log(LoggerLevel.info, `[单条创建记录] ➕ 向对象 ${object_name} 内创建记录, 调用完成`);
-                    this.log(LoggerLevel.debug, `[单条创建记录] ➕ 向对象 ${object_name} 内创建数据, 调用完成, 返回状态: ${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[单条创建记录] ➕ 向对象 ${object_name} 内创建数据, 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.info, `[object.create.record] Record created: ${object_name}`);
+                    this.log(LoggerLevel.debug, `[object.create.record] Record created: ${object_name}, code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.create.record] Response: ${JSON.stringify(response.data)}`);
 
                     return response.data;
                 });
@@ -407,9 +405,9 @@ class Client {
                     }
                 );
 
-                this.log(LoggerLevel.info, `[批量创建记录] ➕ 开始向对象 ${object_name} 批量创建记录`);
-                this.log(LoggerLevel.debug, `[批量创建记录] ➕ 向对象 ${object_name} 批量创建记录, 调用完成, 返回状态: ${res.data.code}`);
-                this.log(LoggerLevel.trace, `[批量创建记录] ➕ 向对象 ${object_name} 批量创建记录, 调用完成, 返回信息: ${JSON.stringify(res.data)}`);
+                this.log(LoggerLevel.info, `[object.create.records] Creating ${records.length} records in: ${object_name}`);
+                this.log(LoggerLevel.debug, `[object.create.records] Records created: ${object_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[object.create.records] Response: ${JSON.stringify(res.data)}`);
                 return res.data;
             },
 
@@ -432,14 +430,12 @@ class Client {
                     chunks.push(records.slice(i, i + chunkSize));
                 }
 
-                this.log(LoggerLevel.debug, `[批量创建记录] ➕ 总共 ${records.length} 条记录, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 条`);
-                this.log(LoggerLevel.trace, `[批量创建记录] ➕ 总共 ${records.length} 条记录, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 条`);
+                this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunking ${records.length} records into ${chunks.length} groups of ${chunkSize}`);
 
                 for (const [index, chunk] of chunks.entries()) {
                     page += 1;
 
-                    this.log(LoggerLevel.debug, `[批量创建记录] ➕ 开始创建第 ${index + 1} 组, 共 ${chunk.length} 条`);
-                    this.log(LoggerLevel.trace, `[批量创建记录] ➕ 开始创建第 ${index + 1} 组, 共 ${chunk.length} 条`);
+                    this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
                     const pageRes = await functionLimiter(async () => {
                         const res = await this.object.create.records({
@@ -451,9 +447,9 @@ class Client {
                             results = results.concat(res.data.items);
                         }
 
-                        this.log(LoggerLevel.info, `[批量创建记录] ➕ 创建 object_name=${object_name}, 第 ${page} 页数据, 调用完成, 创建数量: ${res.data.items.length}`);
-                        this.log(LoggerLevel.debug, `[批量创建记录] ➕ 创建 object_name=${object_name}, 第 ${page} 页页数据, 调用完成, 返回状态: ${res.data.code}`);
-                        this.log(LoggerLevel.trace, `[批量创建记录] ➕ 创建 object_name=${object_name}, 第 ${page} 页页数据, 调用结果: ${JSON.stringify(res.data.items)}`);
+                        this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Chunk ${page} completed: ${object_name}, created=${res.data.items.length}`);
+                        this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunk ${page} result: ${object_name}, code=${res.data.code}`);
+                        this.log(LoggerLevel.trace, `[object.create.recordsWithIterator] Chunk ${page} data: ${JSON.stringify(res.data.items)}`);
 
                         return res;
                     });
@@ -474,16 +470,16 @@ class Client {
                 const { object_name, record_id, record } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/${record_id}`;
 
-                this.log(LoggerLevel.info, `[单条更新记录] 💾 开始更新 record_id: ${record_id}`);
+                this.log(LoggerLevel.info, `[object.update.record] Updating record: ${record_id}`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
 
                     const response = await this.axiosInstance.patch(url, { record }, { headers: { Authorization: `${this.accessToken}` } });
 
-                    this.log(LoggerLevel.info, `[单条更新记录] 💾 更新 object_name=${object_name}, record_id: ${record_id} 调用完成`);
-                    this.log(LoggerLevel.debug, `[单条更新记录] 💾 更新 object_name=${object_name}, record_id: ${record_id} 调用完成, 返回状态: ${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[单条更新记录] 💾 更新 object_name=${object_name}, record_id: ${record_id} 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.info, `[object.update.record] Record updated: ${object_name}.${record_id}`);
+                    this.log(LoggerLevel.debug, `[object.update.record] Record updated: ${object_name}.${record_id}, code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.update.record] Response: ${JSON.stringify(response.data)}`);
                     return response.data;
                 });
 
@@ -500,13 +496,13 @@ class Client {
                 const { object_name, records } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/records_batch`;
 
-                this.log(LoggerLevel.info, `[多条更新记录] 💾 开始更新 ${records.length} 条数据`);
+                this.log(LoggerLevel.info, `[object.update.records] Updating ${records.length} records`);
 
                 const response = await this.axiosInstance.patch(url, { records }, { headers: { Authorization: `${this.accessToken}` } });
 
-                this.log(LoggerLevel.info, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成`);
-                this.log(LoggerLevel.debug, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成, 返回状态: ${response.data.code}`);
-                this.log(LoggerLevel.trace, `[多条更新记录] 💾 更新 object_name=${object_name}, 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                this.log(LoggerLevel.info, `[object.update.records] Records updated: ${object_name}`);
+                this.log(LoggerLevel.debug, `[object.update.records] Records updated: ${object_name}, code=${response.data.code}`);
+                this.log(LoggerLevel.trace, `[object.update.records] Response: ${JSON.stringify(response.data)}`);
 
                 return response.data;
             },
@@ -527,21 +523,19 @@ class Client {
                     chunks.push(records.slice(i, i + chunkSize));
                 }
 
-                this.log(LoggerLevel.debug, `[批量更新记录] 💾 总共 ${records.length} 条记录, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 条`);
-                this.log(LoggerLevel.trace, `[批量更新记录] 💾 总共 ${records.length} 条记录, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 条`);
+                this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunking ${records.length} records into ${chunks.length} groups of ${chunkSize}`);
 
                 const results: any[] = [];
                 for (const [index, chunk] of chunks.entries()) {
-                    this.log(LoggerLevel.debug, `[批量更新记录] 💾 开始更新第 ${index + 1} 组, 共 ${chunk.length} 条`);
-                    this.log(LoggerLevel.trace, `[批量更新记录] 💾 开始更新第 ${index + 1} 组, 共 ${chunk.length} 条`);
+                    this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
                     const res = await functionLimiter(async () => {
                         await this.ensureTokenValid();
 
                         const response = await this.axiosInstance.patch(url, { records: chunk }, { headers: { Authorization: `${this.accessToken}` } });
 
-                        this.log(LoggerLevel.debug, `[批量更新记录] 💾 更新 object_name=${object_name}, 第 ${index + 1} 组调用完成, 返回状态: ${JSON.stringify(response.data)}`);
-                        this.log(LoggerLevel.trace, `[批量更新记录] 💾 更新 object_name=${object_name}, 第 ${index + 1} 组调用完成, 返回信息: ${response.data}`);
+                        this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, code=${response.data.code}`);
+                        this.log(LoggerLevel.trace, `[object.update.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
                         return response.data;
                     });
 
@@ -563,7 +557,7 @@ class Client {
                 const { object_name, record_id } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/${record_id}`;
 
-                this.log(LoggerLevel.trace, `[单条删除记录] 🗑️ object_name=${object_name}, 开始删除 record_id: ${record_id}`);
+                this.log(LoggerLevel.info, `[object.delete.record] Deleting record: ${object_name}.${record_id}`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
@@ -572,7 +566,9 @@ class Client {
                         headers: { Authorization: `${this.accessToken}` }
                     });
 
-                    this.log(LoggerLevel.info, `[单条删除记录] 🗑️ 删除 object_name=${object_name}, record_id: ${record_id} 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.info, `[object.delete.record] Record deleted: ${object_name}.${record_id}`);
+                    this.log(LoggerLevel.debug, `[object.delete.record] Record deleted: ${object_name}.${record_id}, code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.delete.record] Response: ${JSON.stringify(response.data)}`);
                     return response.data;
                 });
 
@@ -589,7 +585,7 @@ class Client {
                 const { object_name, ids } = params;
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
-                this.log(LoggerLevel.info, `[批量删除记录] 🗑️ 开始删除对象 ${object_name} 的 ${ids.length} 条记录`);
+                this.log(LoggerLevel.info, `[object.delete.records] Deleting ${ids.length} records from: ${object_name}`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
@@ -599,9 +595,9 @@ class Client {
                         headers: { Authorization: `${this.accessToken}`, 'Content-Type': 'application/json' }
                     });
 
-                    this.log(LoggerLevel.info, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成`);
-                    this.log(LoggerLevel.debug, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成，返回状态: ${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[批量删除记录] 🗑️ 删除对象 ${object_name} 的 ${ids.length} 条记录记录, 调用完成，返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.info, `[object.delete.records] Records deleted: ${object_name}, count=${ids.length}`);
+                    this.log(LoggerLevel.debug, `[object.delete.records] Records deleted: ${object_name}, count=${ids.length}, code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.delete.records] Response: ${JSON.stringify(response.data)}`);
 
                     return response.data;
                 });
@@ -625,11 +621,11 @@ class Client {
                     chunks.push(ids.slice(i, i + chunkSize));
                 }
 
-                this.log(LoggerLevel.debug, `[批量删除记录] 🗑️ 总共 ${ids.length} 条记录, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 条`);
+                this.log(LoggerLevel.debug, `[object.delete.recordsWithIterator] Chunking ${ids.length} records into ${chunks.length} groups of ${chunkSize}`);
 
                 const results: any[] = [];
                 for (const [index, chunk] of chunks.entries()) {
-                    this.log(LoggerLevel.info, `[批量删除记录] 🗑️ 开始删除第 ${index + 1} 组, 共 ${chunk.length} 条`);
+                    this.log(LoggerLevel.info, `[object.delete.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
                     const res = await functionLimiter(async () => {
                         await this.ensureTokenValid();
@@ -639,8 +635,8 @@ class Client {
                             data: { ids: chunk }
                         });
 
-                        this.log(LoggerLevel.debug, `[批量删除记录] 🗑️ 第 ${index + 1} 组删除完成, 返回状态: ${response.data.code}`);
-                        this.log(LoggerLevel.trace, `[批量删除记录] 🗑️ 第 ${index + 1} 组删除完成, 返回信息: ${JSON.stringify(response.data)}`);
+                        this.log(LoggerLevel.debug, `[object.delete.recordsWithIterator] Chunk ${index + 1} completed: code=${response.data.code}`);
+                        this.log(LoggerLevel.trace, `[object.delete.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
                         return response.data;
                     });
 
@@ -670,7 +666,7 @@ class Client {
 
             const url = '/api/integration/v2/feishu/getDepartments';
 
-            this.log(LoggerLevel.info, `[部门ID交换] 🔄 开始交换单个部门 ID: ${department_id}`);
+            this.log(LoggerLevel.info, `[department.exchange] Exchanging department ID: ${department_id}`);
 
             const res = await functionLimiter(async () => {
                 await this.ensureTokenValid();
@@ -686,8 +682,8 @@ class Client {
                     }
                 );
 
-                this.log(LoggerLevel.debug, `[部门ID交换] 🔄 交换部门 ID: ${department_id} 调用完成, 返回状态: ${response.data.code}`);
-                this.log(LoggerLevel.debug, `[部门ID交换] 🔄 交换部门 ID: ${department_id} 调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                this.log(LoggerLevel.debug, `[department.exchange] Department ID exchanged: ${department_id}, code=${response.data.code}`);
+                this.log(LoggerLevel.trace, `[department.exchange] Response: ${JSON.stringify(response.data)}`);
                 return response.data.data[0]; // 返回第一个元素
             });
 
@@ -714,11 +710,11 @@ class Client {
                 chunks.push(department_ids.slice(i, i + chunkSize));
             }
 
-            this.log(LoggerLevel.info, `[批量部门ID交换] 🔄 总共 ${department_ids.length} 个部门 ID, 拆分为 ${chunks.length} 组, 每组最多 ${chunkSize} 个`);
+            this.log(LoggerLevel.info, `[department.batchExchange] Chunking ${department_ids.length} department IDs into ${chunks.length} groups of ${chunkSize}`);
 
             const results: any[] = [];
             for (const [index, chunk] of chunks.entries()) {
-                this.log(LoggerLevel.info, `[批量部门ID交换] 🔄 开始交换第 ${index + 1} 组, 共 ${chunk.length} 个`);
+                this.log(LoggerLevel.info, `[department.batchExchange] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} IDs`);
 
                 const res = await functionLimiter(async () => {
                     await this.ensureTokenValid();
@@ -734,8 +730,8 @@ class Client {
                         }
                     );
 
-                    this.log(LoggerLevel.debug, `[批量部门ID交换] 🔄 交换第 ${index + 1} 组调用完成, 返回状态: ${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[批量部门ID交换] 🔄 交换第 ${index + 1} 组调用完成, 返回信息: ${JSON.stringify(response.data)}`);
+                    this.log(LoggerLevel.debug, `[department.batchExchange] Chunk ${index + 1} completed: code=${response.data.code}`);
+                    this.log(LoggerLevel.trace, `[department.batchExchange] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
                     return response.data.data;
                 });
 
@@ -761,7 +757,7 @@ class Client {
 
             const url = `/api/cloudfunction/v1/namespaces/${this.namespace}/invoke/${name}`;
 
-            this.log(LoggerLevel.info, `[调用云函数] ☁️ 云函数 ${name} 开始调用`);
+            this.log(LoggerLevel.info, `[function.invoke] Invoking cloud function: ${name}`);
 
             const res = await this.axiosInstance.post(
                 url,
@@ -774,8 +770,8 @@ class Client {
                 }
             );
 
-            this.log(LoggerLevel.debug, `[调用云函数] ☁️ 云函数 ${name} 调用完成, 返回状态: code=${res.data.code}`);
-            this.log(LoggerLevel.trace, `[调用云函数] ☁️ 云函数 ${name} 调用完成, 返回信息: code=${JSON.stringify(res.data)}`);
+            this.log(LoggerLevel.debug, `[function.invoke] Cloud function invoked: ${name}, code=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[function.invoke] Response: ${JSON.stringify(res.data)}`);
 
             return res.data;
         }
