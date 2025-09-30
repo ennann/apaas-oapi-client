@@ -510,7 +510,53 @@ console.log(res);
 
 ***
 
+<br>
 
+# **🔄 自动化流程模块**
+
+## **V1 版本 - 执行流程**
+
+```JavaScript
+const res = await client.automation.v1.execute({
+  flow_api_name: 'automation_cd05fdab67d',
+  operator: {
+    _id: 100,
+    email: 'sample@feishu.cn'
+  },
+  params: {
+    varRecord_ab67d031d44: {
+      _id: 100
+    }
+  }
+});
+console.log(res);
+// 返回: { code: "0", msg: "success", data: { errMsg, executionId, status, data, errCode } }
+```
+
+## **V2 版本 - 执行流程**
+
+V2 版本支持流程重新提交功能。
+
+```JavaScript
+const res = await client.automation.v2.execute({
+  flow_api_name: 'automation_a9ec6ee5fb1',
+  operator: {
+    _id: 100,
+    email: 'sample@feishu.cn'
+  },
+  params: {
+    storeId: 100
+  },
+  is_resubmit: true,
+  pre_instance_id: '1835957428957195'
+});
+console.log(res);
+// 返回: { code: "0", msg: "success", data: { errMsg, executionId, status, data, errCode } }
+```
+
+***
+
+<br>
 
 # **☁️ 云函数模块**
 
@@ -524,7 +570,7 @@ console.log(res);
 
 ***
 
-
+<br>
 
 ## **🛠️ 高级**
 

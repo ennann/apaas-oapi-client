@@ -1298,6 +1298,98 @@ class Client {
             }
         }
     };
+
+    /**
+     * 自动化流程模块
+     */
+    public automation = {
+        /**
+         * V1 版本
+         */
+        v1: {
+            /**
+             * 执行流程
+             * @param params 请求参数 { flow_api_name: string, operator: { _id: number, email: string }, params: any }
+             * @returns 接口返回结果
+             */
+            execute: async (params: { flow_api_name: string; operator: { _id: number; email: string }; params: any }): Promise<any> => {
+                const { flow_api_name, operator, params: flowParams } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/flow/v1/namespaces/${this.namespace}/flows/${flow_api_name}/execute`;
+
+                this.log(LoggerLevel.info, `[automation.v1.execute] Executing flow: ${flow_api_name}`);
+
+                const res = await this.axiosInstance.post(
+                    url,
+                    {
+                        operator,
+                        params: flowParams
+                    },
+                    {
+                        headers: {
+                            Authorization: `${this.accessToken}`,
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                this.log(LoggerLevel.debug, `[automation.v1.execute] Flow executed: ${flow_api_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[automation.v1.execute] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            }
+        },
+
+        /**
+         * V2 版本
+         */
+        v2: {
+            /**
+             * 执行流程
+             * @param params 请求参数 { flow_api_name: string, operator: { _id: number, email: string }, params: any, is_resubmit?: boolean, pre_instance_id?: string }
+             * @returns 接口返回结果
+             */
+            execute: async (params: {
+                flow_api_name: string;
+                operator: { _id: number; email: string };
+                params: any;
+                is_resubmit?: boolean;
+                pre_instance_id?: string;
+            }): Promise<any> => {
+                const { flow_api_name, operator, params: flowParams, is_resubmit, pre_instance_id } = params;
+                await this.ensureTokenValid();
+
+                const url = `/v2/namespaces/${this.namespace}/flows/${flow_api_name}/execute`;
+
+                this.log(LoggerLevel.info, `[automation.v2.execute] Executing flow: ${flow_api_name}`);
+
+                const requestData: any = {
+                    operator,
+                    params: flowParams
+                };
+
+                if (is_resubmit !== undefined) {
+                    requestData.is_resubmit = is_resubmit;
+                }
+                if (pre_instance_id) {
+                    requestData.pre_instance_id = pre_instance_id;
+                }
+
+                const res = await this.axiosInstance.post(url, requestData, {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[automation.v2.execute] Flow executed: ${flow_api_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[automation.v2.execute] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            }
+        }
+    };
 }
 
 export const apaas = {
