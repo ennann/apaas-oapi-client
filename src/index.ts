@@ -776,6 +776,528 @@ class Client {
             return res.data;
         }
     };
+
+    /**
+     * 页面模块
+     */
+    public page = {
+        /**
+         * 获取所有页面
+         * @param params 请求参数 { limit: number (max 200), offset: number }
+         * @returns 接口返回结果
+         */
+        list: async (params: { limit: number; offset: number }): Promise<any> => {
+            const { limit, offset } = params;
+            await this.ensureTokenValid();
+
+            const url = `/api/builder/v1/namespaces/${this.namespace}/meta/pages`;
+
+            this.log(LoggerLevel.info, `[page.list] Fetching pages list: offset=${offset}, limit=${limit}`);
+
+            const res = await this.axiosInstance.post(
+                url,
+                { limit, offset },
+                {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            this.log(LoggerLevel.debug, `[page.list] Pages list fetched: code=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[page.list] Response: ${JSON.stringify(res.data)}`);
+
+            return res.data;
+        },
+
+        /**
+         * 获取所有页面 - 支持自动分页，获取全部数据
+         * @description 该方法会自动处理分页，直到获取所有页面数据
+         * @param params 请求参数 { limit?: number }
+         * @returns { total, items }
+         */
+        listWithIterator: async (params?: { limit?: number }): Promise<{ total: number; items: any[] }> => {
+            const limit = params?.limit || 100;
+            let results: any[] = [];
+            let offset = 0;
+            let total = 0;
+            let page = 0;
+            let totalPages = 0;
+
+            do {
+                const pageRes = await functionLimiter(async () => {
+                    const res = await this.page.list({ limit, offset });
+
+                    page += 1;
+
+                    if (res.data && Array.isArray(res.data.items)) {
+                        results = results.concat(res.data.items);
+                    }
+
+                    if (page === 1) {
+                        total = res.data.total || 0;
+                        totalPages = Math.ceil(total / limit);
+                        this.log(LoggerLevel.info, `[page.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
+                    }
+
+                    offset += limit;
+
+                    const padLength = totalPages.toString().length;
+                    const pageStr = page.toString().padStart(padLength, '0');
+                    const totalPagesStr = totalPages.toString().padStart(padLength, '0');
+
+                    this.log(LoggerLevel.info, `[page.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
+                    this.log(LoggerLevel.debug, `[page.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                    this.log(LoggerLevel.trace, `[page.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
+
+                    return res;
+                });
+            } while (results.length < total);
+
+            return { total, items: results };
+        },
+
+        /**
+         * 获取页面详情
+         * @param params 请求参数 { page_id: string }
+         * @returns 接口返回结果
+         */
+        detail: async (params: { page_id: string }): Promise<any> => {
+            const { page_id } = params;
+            await this.ensureTokenValid();
+
+            const url = `/api/builder/v1/namespaces/${this.namespace}/meta/pages/${page_id}`;
+
+            this.log(LoggerLevel.info, `[page.detail] Fetching page detail: ${page_id}`);
+
+            const res = await this.axiosInstance.get(url, {
+                headers: {
+                    Authorization: `${this.accessToken}`
+                }
+            });
+
+            this.log(LoggerLevel.debug, `[page.detail] Page detail fetched: ${page_id}, code=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[page.detail] Response: ${JSON.stringify(res.data)}`);
+
+            return res.data;
+        },
+
+        /**
+         * 获取页面访问地址
+         * @param params 请求参数 { page_id: string, pageParams?: any, parentPageParams?: any, navId?: string, tabId?: string }
+         * @returns 接口返回结果
+         */
+        url: async (params: { page_id: string; pageParams?: any; parentPageParams?: any; navId?: string; tabId?: string }): Promise<any> => {
+            const { page_id, pageParams, parentPageParams, navId, tabId } = params;
+            await this.ensureTokenValid();
+
+            const url = `/api/builder/v1/namespaces/${this.namespace}/meta/pages/${page_id}/link`;
+
+            this.log(LoggerLevel.info, `[page.url] Fetching page URL: ${page_id}`);
+
+            const requestData: any = {};
+            if (pageParams) requestData.pageParams = pageParams;
+            if (parentPageParams) requestData.parentPageParams = parentPageParams;
+            if (navId) requestData.navId = navId;
+            if (tabId) requestData.tabId = tabId;
+
+            const res = await this.axiosInstance.post(url, requestData, {
+                headers: {
+                    Authorization: `${this.accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            this.log(LoggerLevel.debug, `[page.url] Page URL fetched: ${page_id}, code=${res.data.code}`);
+            this.log(LoggerLevel.trace, `[page.url] Response: ${JSON.stringify(res.data)}`);
+
+            return res.data;
+        }
+    };
+
+    /**
+     * 附件模块
+     */
+    public attachment = {
+        /**
+         * 文件操作
+         */
+        file: {
+            /**
+             * 上传文件
+             * @param params 请求参数 { file: any }
+             * @returns 接口返回结果
+             */
+            upload: async (params: { file: any }): Promise<any> => {
+                const { file } = params;
+                await this.ensureTokenValid();
+
+                const url = '/api/attachment/v1/files';
+
+                this.log(LoggerLevel.info, '[attachment.file.upload] Uploading file');
+
+                const FormData = require('form-data');
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const res = await this.axiosInstance.post(url, formData, {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        ...formData.getHeaders()
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[attachment.file.upload] File uploaded: code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[attachment.file.upload] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 下载文件
+             * @param params 请求参数 { file_id: string }
+             * @returns 文件二进制流
+             */
+            download: async (params: { file_id: string }): Promise<any> => {
+                const { file_id } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/attachment/v1/files/${file_id}`;
+
+                this.log(LoggerLevel.info, `[attachment.file.download] Downloading file: ${file_id}`);
+
+                const res = await this.axiosInstance.get(url, {
+                    headers: {
+                        Authorization: `${this.accessToken}`
+                    },
+                    responseType: 'arraybuffer'
+                });
+
+                this.log(LoggerLevel.debug, `[attachment.file.download] File downloaded: ${file_id}`);
+
+                return res.data;
+            },
+
+            /**
+             * 删除文件
+             * @param params 请求参数 { file_id: string }
+             * @returns 接口返回结果
+             */
+            delete: async (params: { file_id: string }): Promise<any> => {
+                const { file_id } = params;
+                await this.ensureTokenValid();
+
+                const url = `/v1/files/${file_id}`;
+
+                this.log(LoggerLevel.info, `[attachment.file.delete] Deleting file: ${file_id}`);
+
+                const res = await this.axiosInstance.delete(url, {
+                    headers: {
+                        Authorization: `${this.accessToken}`
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[attachment.file.delete] File deleted: ${file_id}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[attachment.file.delete] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            }
+        },
+
+        /**
+         * 头像图片操作
+         */
+        avatar: {
+            /**
+             * 上传头像图片
+             * @param params 请求参数 { image: any }
+             * @returns 接口返回结果
+             */
+            upload: async (params: { image: any }): Promise<any> => {
+                const { image } = params;
+                await this.ensureTokenValid();
+
+                const url = '/api/attachment/v1/images';
+
+                this.log(LoggerLevel.info, '[attachment.avatar.upload] Uploading avatar image');
+
+                const FormData = require('form-data');
+                const formData = new FormData();
+                formData.append('image', image);
+
+                const res = await this.axiosInstance.post(url, formData, {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        ...formData.getHeaders()
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[attachment.avatar.upload] Avatar image uploaded: code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[attachment.avatar.upload] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 下载头像图片
+             * @param params 请求参数 { image_id: string }
+             * @returns 图片二进制流
+             */
+            download: async (params: { image_id: string }): Promise<any> => {
+                const { image_id } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/attachment/v1/images/${image_id}`;
+
+                this.log(LoggerLevel.info, `[attachment.avatar.download] Downloading avatar image: ${image_id}`);
+
+                const res = await this.axiosInstance.get(url, {
+                    headers: {
+                        Authorization: `${this.accessToken}`
+                    },
+                    responseType: 'arraybuffer'
+                });
+
+                this.log(LoggerLevel.debug, `[attachment.avatar.download] Avatar image downloaded: ${image_id}`);
+
+                return res.data;
+            }
+        }
+    };
+
+    /**
+     * 全局数据模块
+     */
+    public global = {
+        /**
+         * 全局选项
+         */
+        options: {
+            /**
+             * 查询全局选项详情
+             * @param params 请求参数 { api_name: string }
+             * @returns 接口返回结果
+             */
+            detail: async (params: { api_name: string }): Promise<any> => {
+                const { api_name } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/data/v1/namespaces/${this.namespace}/globalOptions/${api_name}`;
+
+                this.log(LoggerLevel.info, `[global.options.detail] Fetching global option detail: ${api_name}`);
+
+                const res = await this.axiosInstance.get(url, {
+                    headers: {
+                        Authorization: `${this.accessToken}`
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[global.options.detail] Global option detail fetched: ${api_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[global.options.detail] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 查询全局选项列表
+             * @param params 请求参数 { limit: number, offset: number, filter?: { quickQuery?: string } }
+             * @returns 接口返回结果
+             */
+            list: async (params: { limit: number; offset: number; filter?: { quickQuery?: string } }): Promise<any> => {
+                const { limit, offset, filter } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/data/v1/namespaces/${this.namespace}/globalOptions/list`;
+
+                this.log(LoggerLevel.info, `[global.options.list] Fetching global options list: offset=${offset}, limit=${limit}`);
+
+                const requestData: any = { limit, offset };
+                if (filter) {
+                    requestData.filter = filter;
+                }
+
+                const res = await this.axiosInstance.post(url, requestData, {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[global.options.list] Global options list fetched: code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[global.options.list] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 查询所有全局选项 - 支持自动分页，获取全部数据
+             * @description 该方法会自动处理分页，直到获取所有全局选项数据
+             * @param params 请求参数 { limit?: number, filter?: { quickQuery?: string } }
+             * @returns { total, items }
+             */
+            listWithIterator: async (params?: { limit?: number; filter?: { quickQuery?: string } }): Promise<{ total: number; items: any[] }> => {
+                const limit = params?.limit || 100;
+                const filter = params?.filter;
+                let results: any[] = [];
+                let offset = 0;
+                let total = 0;
+                let page = 0;
+                let totalPages = 0;
+
+                do {
+                    const pageRes = await functionLimiter(async () => {
+                        const requestParams: any = { limit, offset };
+                        if (filter) {
+                            requestParams.filter = filter;
+                        }
+
+                        const res = await this.global.options.list(requestParams);
+
+                        page += 1;
+
+                        if (res.data && Array.isArray(res.data.items)) {
+                            results = results.concat(res.data.items);
+                        }
+
+                        if (page === 1) {
+                            total = res.data.total || 0;
+                            totalPages = Math.ceil(total / limit);
+                            this.log(LoggerLevel.info, `[global.options.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
+                        }
+
+                        offset += limit;
+
+                        const padLength = totalPages.toString().length;
+                        const pageStr = page.toString().padStart(padLength, '0');
+                        const totalPagesStr = totalPages.toString().padStart(padLength, '0');
+
+                        this.log(LoggerLevel.info, `[global.options.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
+                        this.log(LoggerLevel.debug, `[global.options.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                        this.log(LoggerLevel.trace, `[global.options.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
+
+                        return res;
+                    });
+                } while (results.length < total);
+
+                return { total, items: results };
+            }
+        },
+
+        /**
+         * 环境变量
+         */
+        variables: {
+            /**
+             * 查询环境变量详情
+             * @param params 请求参数 { api_name: string }
+             * @returns 接口返回结果
+             */
+            detail: async (params: { api_name: string }): Promise<any> => {
+                const { api_name } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/data/v1/namespaces/${this.namespace}/globalVariables/${api_name}`;
+
+                this.log(LoggerLevel.info, `[global.variables.detail] Fetching global variable detail: ${api_name}`);
+
+                const res = await this.axiosInstance.get(url, {
+                    headers: {
+                        Authorization: `${this.accessToken}`
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[global.variables.detail] Global variable detail fetched: ${api_name}, code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[global.variables.detail] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 查询环境变量列表
+             * @param params 请求参数 { limit: number, offset: number, filter?: { quickQuery?: string } }
+             * @returns 接口返回结果
+             */
+            list: async (params: { limit: number; offset: number; filter?: { quickQuery?: string } }): Promise<any> => {
+                const { limit, offset, filter } = params;
+                await this.ensureTokenValid();
+
+                const url = `/api/data/v1/namespaces/${this.namespace}/globalVariables/list`;
+
+                this.log(LoggerLevel.info, `[global.variables.list] Fetching global variables list: offset=${offset}, limit=${limit}`);
+
+                const requestData: any = { limit, offset };
+                if (filter) {
+                    requestData.filter = filter;
+                }
+
+                const res = await this.axiosInstance.post(url, requestData, {
+                    headers: {
+                        Authorization: `${this.accessToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                this.log(LoggerLevel.debug, `[global.variables.list] Global variables list fetched: code=${res.data.code}`);
+                this.log(LoggerLevel.trace, `[global.variables.list] Response: ${JSON.stringify(res.data)}`);
+
+                return res.data;
+            },
+
+            /**
+             * 查询所有环境变量 - 支持自动分页，获取全部数据
+             * @description 该方法会自动处理分页，直到获取所有环境变量数据
+             * @param params 请求参数 { limit?: number, filter?: { quickQuery?: string } }
+             * @returns { total, items }
+             */
+            listWithIterator: async (params?: { limit?: number; filter?: { quickQuery?: string } }): Promise<{ total: number; items: any[] }> => {
+                const limit = params?.limit || 100;
+                const filter = params?.filter;
+                let results: any[] = [];
+                let offset = 0;
+                let total = 0;
+                let page = 0;
+                let totalPages = 0;
+
+                do {
+                    const pageRes = await functionLimiter(async () => {
+                        const requestParams: any = { limit, offset };
+                        if (filter) {
+                            requestParams.filter = filter;
+                        }
+
+                        const res = await this.global.variables.list(requestParams);
+
+                        page += 1;
+
+                        if (res.data && Array.isArray(res.data.items)) {
+                            results = results.concat(res.data.items);
+                        }
+
+                        if (page === 1) {
+                            total = res.data.total || 0;
+                            totalPages = Math.ceil(total / limit);
+                            this.log(LoggerLevel.info, `[global.variables.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
+                        }
+
+                        offset += limit;
+
+                        const padLength = totalPages.toString().length;
+                        const pageStr = page.toString().padStart(padLength, '0');
+                        const totalPagesStr = totalPages.toString().padStart(padLength, '0');
+
+                        this.log(LoggerLevel.info, `[global.variables.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
+                        this.log(LoggerLevel.debug, `[global.variables.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                        this.log(LoggerLevel.trace, `[global.variables.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
+
+                        return res;
+                    });
+                } while (results.length < total);
+
+                return { total, items: results };
+            }
+        }
+    };
 }
 
 export const apaas = {
