@@ -456,7 +456,7 @@ console.log('Items:', items);
 
 ```JavaScript
 const res = await client.page.detail({
-  page_id: 'appPage_aadd64dlqamdo'
+  page_id: 'appPage_page'
 });
 console.log(res);
 ```
@@ -465,14 +465,14 @@ console.log(res);
 
 ```JavaScript
 const res = await client.page.url({
-  page_id: 'appPage_aadd64dlqamdo',
-  pageParams: { var_EzpvJsER: '1234567890' },
+  page_id: 'appPage_page',
+  pageParams: { var_page: '1234567890' },
   parentPageParams: {
-    navId: 'aadd64bapmic2',
-    pageApiName: 'page_aaddmtkqgicbg'
+    navId: 'page_nav_id',
+    pageApiName: 'page_name'
   },
-  navId: 'aadd64bapmic2',
-  tabId: 'tab_legqch3h'
+  navId: 'page_nav_id',
+  tabId: 'tab_id'
 });
 console.log(res);
 // 返回: { code: "0", msg: "success", data: { link: "https://..." } }
