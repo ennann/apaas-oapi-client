@@ -191,16 +191,30 @@ const res = await client.object.create.record({
 console.log(res);
 ```
 
-### **批量创建**
+### **批量创建（最多 100 条）**
 
-> ⚠️ 每次最多创建 100 条，SDK 已自动分组限流
+```JavaScript
+const res = await client.object.create.records({
+  object_name: 'object_event_log',
+  records: [
+    { name: 'Sample text 1', content: 'Sample text 1' },
+    { name: 'Sample text 2', content: 'Sample text 2' }
+  ]
+});
+console.log(res);
+```
+
+### **批量创建（支持超过 100 条，自动拆分）**
+
+> ⚠️ 超过 100 条会自动拆分为多次请求，SDK 已自动分组限流
 
 ```JavaScript
 const { total, items } = await client.object.create.recordsWithIterator({
   object_name: 'object_event_log',
   records: [
     { name: 'Sample text 1', content: 'Sample text 1' },
-    { name: 'Sample text 2', content: 'Sample text 2' }
+    { name: 'Sample text 2', content: 'Sample text 2' },
+    // ... 可以超过 100 条
   ]
 });
 console.log('Total:', total);
@@ -224,12 +238,10 @@ console.log(res);
 
 ***
 
-### **批量更新**
-
-> ⚠️ 每次最多更新 100 条，SDK 已自动分组限流
+### **批量更新（最多 100 条）**
 
 ```JavaScript
-const res = await client.object.update.recordsBatchUpdate({
+const res = await client.object.update.records({
   object_name: 'object_store',
   records: [
     { _id: 'id1', field1: 'value1' },
@@ -237,6 +249,22 @@ const res = await client.object.update.recordsBatchUpdate({
   ]
 });
 console.log(res);
+```
+
+### **批量更新（支持超过 100 条，自动拆分）**
+
+> ⚠️ 超过 100 条会自动拆分为多次请求，SDK 已自动分组限流
+
+```JavaScript
+const results = await client.object.update.recordsWithIterator({
+  object_name: 'object_store',
+  records: [
+    { _id: 'id1', field1: 'value1' },
+    { _id: 'id2', field1: 'value2' },
+    // ... 可以超过 100 条
+  ]
+});
+console.log(results); // 返回所有子请求的结果数组
 ```
 
 ***
@@ -257,16 +285,26 @@ console.log(res);
 
 ***
 
-### **批量删除**
-
-> ⚠️ 每次最多删除 100 条，SDK 已自动分组限流
+### **批量删除（最多 100 条）**
 
 ```JavaScript
-const res = await client.object.delete.recordsBatchDelete({
+const res = await client.object.delete.records({
   object_name: 'object_store',
   ids: ['id1', 'id2', 'id3']
 });
 console.log(res);
+```
+
+### **批量删除（支持超过 100 条，自动拆分）**
+
+> ⚠️ 超过 100 条会自动拆分为多次请求，SDK 已自动分组限流
+
+```JavaScript
+const results = await client.object.delete.recordsWithIterator({
+  object_name: 'object_store',
+  ids: ['id1', 'id2', 'id3', /* ... 可以超过 100 条 */]
+});
+console.log(results); // 返回所有子请求的结果数组
 ```
 
 ***
