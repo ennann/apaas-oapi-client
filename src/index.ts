@@ -420,6 +420,17 @@ class Client {
             recordsWithIterator: async (params: { object_name: string; records: any[] }): Promise<{ total: number; items: any[] }> => {
                 const { object_name, records } = params;
 
+                // 参数校验
+                if (!records || !Array.isArray(records)) {
+                    this.log(LoggerLevel.error, '[object.create.recordsWithIterator] Invalid records parameter: must be a non-empty array');
+                    throw new Error('参数 records 必须是一个数组');
+                }
+                
+                if (records.length === 0) {
+                    this.log(LoggerLevel.warn, '[object.create.recordsWithIterator] Empty records array provided, returning empty result');
+                    return { total: 0, items: [] };
+                }
+
                 let results: any[] = [];
                 let total = records.length;
                 const chunkSize = 100;
@@ -521,6 +532,18 @@ class Client {
              */
             recordsWithIterator: async (params: { object_name: string; records: any[] }): Promise<any[]> => {
                 const { object_name, records } = params;
+                
+                // 参数校验
+                if (!records || !Array.isArray(records)) {
+                    this.log(LoggerLevel.error, '[object.update.recordsWithIterator] Invalid records parameter: must be a non-empty array');
+                    throw new Error('参数 records 必须是一个数组');
+                }
+                
+                if (records.length === 0) {
+                    this.log(LoggerLevel.warn, '[object.update.recordsWithIterator] Empty records array provided, returning empty result');
+                    return [];
+                }
+                
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
                 const chunkSize = 100;
@@ -619,6 +642,18 @@ class Client {
              */
             recordsWithIterator: async (params: { object_name: string; ids: string[] }): Promise<any[]> => {
                 const { object_name, ids } = params;
+                
+                // 参数校验
+                if (!ids || !Array.isArray(ids)) {
+                    this.log(LoggerLevel.error, '[object.delete.recordsWithIterator] Invalid ids parameter: must be a non-empty array');
+                    throw new Error('参数 ids 必须是一个数组');
+                }
+                
+                if (ids.length === 0) {
+                    this.log(LoggerLevel.warn, '[object.delete.recordsWithIterator] Empty ids array provided, returning empty result');
+                    return [];
+                }
+                
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
                 const chunkSize = 100;
@@ -707,6 +742,17 @@ class Client {
             // - 'department_id' (如 "1758534140403815")
             // - 'external_department_id' (外部平台 department_id, 无固定格式)
             // - 'external_open_department_id' (以 'oc_' 开头的 open_department_id)
+
+            // 参数校验
+            if (!department_ids || !Array.isArray(department_ids)) {
+                this.log(LoggerLevel.error, '[department.batchExchange] Invalid department_ids parameter: must be a non-empty array');
+                throw new Error('参数 department_ids 必须是一个数组');
+            }
+            
+            if (department_ids.length === 0) {
+                this.log(LoggerLevel.warn, '[department.batchExchange] Empty department_ids array provided, returning empty result');
+                return [];
+            }
 
             const url = '/api/integration/v2/feishu/getDepartments';
 
