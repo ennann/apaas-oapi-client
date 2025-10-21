@@ -494,17 +494,23 @@ class Client {
              */
             records: async (params: { object_name: string; records: any[] }): Promise<any> => {
                 const { object_name, records } = params;
-                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records/records_batch`;
+                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
                 this.log(LoggerLevel.info, `[object.update.records] Updating ${records.length} records`);
 
-                const response = await this.axiosInstance.patch(url, { records }, { headers: { Authorization: `${this.accessToken}` } });
+                const response = await functionLimiter(async () => {
+                    await this.ensureTokenValid();
 
-                this.log(LoggerLevel.info, `[object.update.records] Records updated: ${object_name}`);
-                this.log(LoggerLevel.debug, `[object.update.records] Records updated: ${object_name}, code=${response.data.code}`);
-                this.log(LoggerLevel.trace, `[object.update.records] Response: ${JSON.stringify(response.data)}`);
+                    const res = await this.axiosInstance.patch(url, { records }, { headers: { Authorization: `${this.accessToken}` } });
 
-                return response.data;
+                    this.log(LoggerLevel.info, `[object.update.records] Records updated: ${object_name}`);
+                    this.log(LoggerLevel.debug, `[object.update.records] Records updated: ${object_name}, code=${res.data.code}`);
+                    this.log(LoggerLevel.trace, `[object.update.records] Response: ${JSON.stringify(res.data)}`);
+
+                    return res.data;
+                });
+
+                return response;
             },
 
             /**
