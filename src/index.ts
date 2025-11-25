@@ -309,13 +309,17 @@ class Client {
                 let total = 0;
                 let page = 0;
                 let totalPages = 0;
+                let hasMore = true;
 
                 const pageSize = data.page_size || 100;
 
-                do {
+                while (hasMore) {
                     const pageRes = await functionLimiter(async () => {
                         const mergedData: any = { ...data };
-                        if (nextPageToken) {
+                        // 如果使用 page_token，第一页需要传空字符串
+                        if (data.use_page_token) {
+                            mergedData.page_token = nextPageToken || '';
+                        } else if (nextPageToken) {
                             mergedData.page_token = nextPageToken;
                         }
 
@@ -345,18 +349,21 @@ class Client {
                         }
 
                         nextPageToken = res.data?.next_page_token;
+                        
+                        // 检查是否还有更多数据：next_page_token 存在且不为空字符串
+                        hasMore = !!(nextPageToken && nextPageToken !== '' && nextPageToken !== 'null');
 
                         const padLength = totalPages.toString().length;
                         const pageStr = page.toString().padStart(padLength, '0');
                         const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
                         this.log(LoggerLevel.info, `[object.search.recordsWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
-                        this.log(LoggerLevel.debug, `[object.search.recordsWithIterator] Page ${page} details: items=${res.data?.items?.length}, nextToken=${nextPageToken || 'none'}`);
+                        this.log(LoggerLevel.debug, `[object.search.recordsWithIterator] Page ${page} details: items=${res.data?.items?.length}, nextToken=${nextPageToken || 'none'}, hasMore=${hasMore}`);
                         this.log(LoggerLevel.trace, `[object.search.recordsWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
                     });
-                } while (nextPageToken);
+                }
 
                 return { total, items: results };
             }
