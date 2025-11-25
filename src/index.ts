@@ -432,11 +432,11 @@ class Client {
             /**
              * 分批创建所有记录 - 支持超过 100 条数据，自动拆分
              * @description 创建多条记录到指定对象中，超过 100 条数据会自动拆分为多次请求
-             * @param params 请求参数 { object_name, records }
+             * @param params 请求参数 { object_name, records, limit }
              * @returns { total, items }
              */
-            recordsWithIterator: async (params: { object_name: string; records: any[] }): Promise<{ total: number; items: any[] }> => {
-                const { object_name, records } = params;
+            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<{ total: number; items: any[] }> => {
+                const { object_name, records, limit = 100 } = params;
 
                 // 参数校验
                 if (!records || !Array.isArray(records)) {
@@ -451,7 +451,7 @@ class Client {
 
                 let results: any[] = [];
                 let total = records.length;
-                const chunkSize = 100;
+                const chunkSize = limit;
                 let page = 0;
 
                 const chunks: any[][] = [];
@@ -556,8 +556,8 @@ class Client {
              * @param params 请求参数
              * @returns 所有子请求的返回结果数组
              */
-            recordsWithIterator: async (params: { object_name: string; records: any[] }): Promise<any[]> => {
-                const { object_name, records } = params;
+            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<any[]> => {
+                const { object_name, records, limit = 100 } = params;
                 
                 // 参数校验
                 if (!records || !Array.isArray(records)) {
@@ -570,7 +570,7 @@ class Client {
                     return [];
                 }
 
-                const chunkSize = 100;
+                const chunkSize = limit;
                 const chunks: any[][] = [];
                 for (let i = 0; i < records.length; i += chunkSize) {
                     chunks.push(records.slice(i, i + chunkSize));
@@ -667,8 +667,8 @@ class Client {
              * @param params 请求参数
              * @returns 所有子请求的返回结果数组
              */
-            recordsWithIterator: async (params: { object_name: string; ids: string[] }): Promise<any[]> => {
-                const { object_name, ids } = params;
+            recordsWithIterator: async (params: { object_name: string; ids: string[]; limit?: number }): Promise<any[]> => {
+                const { object_name, ids, limit = 100 } = params;
                 
                 // 参数校验
                 if (!ids || !Array.isArray(ids)) {
@@ -683,7 +683,7 @@ class Client {
                 
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
-                const chunkSize = 100;
+                const chunkSize = limit;
                 const chunks: string[][] = [];
                 for (let i = 0; i < ids.length; i += chunkSize) {
                     chunks.push(ids.slice(i, i + chunkSize));
