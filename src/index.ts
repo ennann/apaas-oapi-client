@@ -553,10 +553,16 @@ class Client {
             /**
              * 批量更新 - 支持超过 100 条数据，自动拆分
              * @description 更新指定对象下的多条记录，超过 100 条数据会自动拆分为多次请求
-             * @param params 请求参数
-             * @returns 所有子请求的返回结果数组
+             * @param params 请求参数，包含 object_name, records, limit
+             * @returns { total, success, failed, successCount, failedCount }
              */
-            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<any[]> => {
+            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<{
+                total: number;
+                success: Array<{ _id: string; success: true }>;
+                failed: Array<{ _id: string; success: false; error?: string }>;
+                successCount: number;
+                failedCount: number;
+            }> => {
                 const { object_name, records, limit = 100 } = params;
                 
                 // 参数校验
@@ -567,7 +573,7 @@ class Client {
                 
                 if (records.length === 0) {
                     this.log(LoggerLevel.warn, '[object.update.recordsWithIterator] Empty records array provided, returning empty result');
-                    return [];
+                    return { total: 0, success: [], failed: [], successCount: 0, failedCount: 0 };
                 }
 
                 const chunkSize = limit;
@@ -578,27 +584,68 @@ class Client {
 
                 this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunking ${records.length} records into ${chunks.length} groups of ${chunkSize}`);
 
-                const results: any[] = [];
+                const successItems: Array<{ _id: string; success: true }> = [];
+                const failedItems: Array<{ _id: string; success: false; error?: string }> = [];
+
                 for (const [index, chunk] of chunks.entries()) {
                     this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
-                    const res = await this.object.update.records({
-                        object_name,
-                        records: chunk
-                    });
+                    try {
+                        const res = await this.object.update.records({
+                            object_name,
+                            records: chunk
+                        });
 
-                    if (res.code !== '0') {
-                        this.log(LoggerLevel.error, `[object.update.recordsWithIterator] Error updating records: code=${res.code}, msg=${res.msg}`);
-                        throw new Error(res.msg || `Update failed with code ${res.code}`);
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[object.update.recordsWithIterator] Chunk ${index + 1} failed: code=${res.code}, msg=${res.msg}`);
+                            // 整个批次失败，将这批次的所有记录标记为失败
+                            chunk.forEach((record: any) => {
+                                failedItems.push({
+                                    _id: record._id || 'unknown',
+                                    success: false,
+                                    error: res.msg || `Update failed with code ${res.code}`
+                                });
+                            });
+                            continue;
+                        }
+
+                        // 处理响应中的 items
+                        if (res.data && Array.isArray(res.data.items)) {
+                            res.data.items.forEach((item: any) => {
+                                if (item.success) {
+                                    successItems.push(item);
+                                } else {
+                                    failedItems.push(item);
+                                }
+                            });
+                        }
+
+                        this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, success=${res.data?.items?.filter((i: any) => i.success).length}, failed=${res.data?.items?.filter((i: any) => !i.success).length}`);
+                        this.log(LoggerLevel.trace, `[object.update.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(res)}`);
+                    } catch (error) {
+                        this.log(LoggerLevel.error, `[object.update.recordsWithIterator] Chunk ${index + 1} threw error: ${error}`);
+                        // 整个批次异常，将这批次的所有记录标记为失败
+                        chunk.forEach((record: any) => {
+                            failedItems.push({
+                                _id: record._id || 'unknown',
+                                success: false,
+                                error: error instanceof Error ? error.message : String(error)
+                            });
+                        });
                     }
-
-                    this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, code=${res.code}`);
-                    this.log(LoggerLevel.trace, `[object.update.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(res)}`);
-
-                    results.push(res);
                 }
 
-                return results;
+                const result = {
+                    total: records.length,
+                    success: successItems,
+                    failed: failedItems,
+                    successCount: successItems.length,
+                    failedCount: failedItems.length
+                };
+
+                this.log(LoggerLevel.info, `[object.update.recordsWithIterator] Update completed: total=${result.total}, success=${result.successCount}, failed=${result.failedCount}`);
+
+                return result;
             }
         },
 
