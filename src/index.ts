@@ -569,8 +569,6 @@ class Client {
                     this.log(LoggerLevel.warn, '[object.update.recordsWithIterator] Empty records array provided, returning empty result');
                     return [];
                 }
-                
-                const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
 
                 const chunkSize = 100;
                 const chunks: any[][] = [];
@@ -584,15 +582,18 @@ class Client {
                 for (const [index, chunk] of chunks.entries()) {
                     this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
-                    const res = await functionLimiter(async () => {
-                        await this.ensureTokenValid();
-
-                        const response = await this.axiosInstance.patch(url, { records: chunk }, { headers: { Authorization: `${this.accessToken}` } });
-
-                        this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, code=${response.data.code}`);
-                        this.log(LoggerLevel.trace, `[object.update.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
-                        return response.data;
+                    const res = await this.object.update.records({
+                        object_name,
+                        records: chunk
                     });
+
+                    if (res.code !== '0') {
+                        this.log(LoggerLevel.error, `[object.update.recordsWithIterator] Error updating records: code=${res.code}, msg=${res.msg}`);
+                        throw new Error(res.msg || `Update failed with code ${res.code}`);
+                    }
+
+                    this.log(LoggerLevel.debug, `[object.update.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, code=${res.code}`);
+                    this.log(LoggerLevel.trace, `[object.update.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(res)}`);
 
                     results.push(res);
                 }
