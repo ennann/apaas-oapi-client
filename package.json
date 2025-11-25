@@ -1,6 +1,6 @@
 {
     "name": "apaas-oapi-client",
-    "version": "0.1.25",
+    "version": "0.1.26",
     "main": "dist/index.js",
     "exports": {
         ".": "./dist/index.js",
