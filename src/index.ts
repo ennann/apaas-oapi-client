@@ -305,7 +305,7 @@ class Client {
                 const { object_name, data } = params;
 
                 let results: any[] = [];
-                let nextPageToken: string | undefined = '';
+                let nextPageToken: string | undefined = undefined;
                 let total = 0;
                 let page = 0;
                 let totalPages = 0;
@@ -314,12 +314,20 @@ class Client {
 
                 do {
                     const pageRes = await functionLimiter(async () => {
-                        const mergedData = { ...data, page_token: nextPageToken || '' };
+                        const mergedData: any = { ...data };
+                        if (nextPageToken) {
+                            mergedData.page_token = nextPageToken;
+                        }
 
                         const res = await this.object.search.records({
                             object_name,
                             data: mergedData
                         });
+
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[object.search.recordsWithIterator] Error querying records: code=${res.code}, msg=${res.msg}`);
+                            throw new Error(res.msg || `Query failed with code ${res.code}`);
+                        }
 
                         page += 1;
 
@@ -327,20 +335,23 @@ class Client {
                             results = results.concat(res.data.items);
                         }
 
+                        if (res.data && (res.data.total !== undefined && res.data.total !== null)) {
+                            total = res.data.total;
+                        }
+
                         if (page === 1) {
-                            total = res.data.total || 0;
                             totalPages = Math.ceil(total / pageSize);
                             this.log(LoggerLevel.info, `[object.search.recordsWithIterator] Starting paginated query: ${object_name}, total=${total}, pages=${totalPages}`);
                         }
 
-                        nextPageToken = res.data.next_page_token;
+                        nextPageToken = res.data?.next_page_token;
 
                         const padLength = totalPages.toString().length;
                         const pageStr = page.toString().padStart(padLength, '0');
                         const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
                         this.log(LoggerLevel.info, `[object.search.recordsWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
-                        this.log(LoggerLevel.debug, `[object.search.recordsWithIterator] Page ${page} details: items=${res.data.items?.length}, nextToken=${nextPageToken || 'none'}`);
+                        this.log(LoggerLevel.debug, `[object.search.recordsWithIterator] Page ${page} details: items=${res.data?.items?.length}, nextToken=${nextPageToken || 'none'}`);
                         this.log(LoggerLevel.trace, `[object.search.recordsWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
@@ -454,13 +465,21 @@ class Client {
                             records: chunk
                         });
 
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[object.create.recordsWithIterator] Error creating records: code=${res.code}, msg=${res.msg}`);
+                            // Should we throw? Probably yes, to stop partial creation or notify user.
+                            // But maybe user wants partial success?
+                            // Given other methods throw, I'll throw here too.
+                            throw new Error(res.msg || `Creation failed with code ${res.code}`);
+                        }
+
                         if (res.data && Array.isArray(res.data.items)) {
                             results = results.concat(res.data.items);
                         }
 
-                        this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Chunk ${page} completed: ${object_name}, created=${res.data.items.length}`);
-                        this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunk ${page} result: ${object_name}, code=${res.data.code}`);
-                        this.log(LoggerLevel.trace, `[object.create.recordsWithIterator] Chunk ${page} data: ${JSON.stringify(res.data.items)}`);
+                        this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Chunk ${page} completed: ${object_name}, created=${res.data?.items?.length}`);
+                        this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunk ${page} result: ${object_name}, code=${res.code}`);
+                        this.log(LoggerLevel.trace, `[object.create.recordsWithIterator] Chunk ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
                     });
@@ -725,7 +744,13 @@ class Client {
 
                 this.log(LoggerLevel.debug, `[department.exchange] Department ID exchanged: ${department_id}, code=${response.data.code}`);
                 this.log(LoggerLevel.trace, `[department.exchange] Response: ${JSON.stringify(response.data)}`);
-                return response.data.data[0]; // 返回第一个元素
+
+                if (response.data.code !== '0') {
+                    this.log(LoggerLevel.error, `[department.exchange] Error exchanging department: code=${response.data.code}, msg=${response.data.msg}`);
+                    throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
+                }
+
+                return response.data.data && response.data.data[0]; // 返回第一个元素
             });
 
             return res;
@@ -784,7 +809,13 @@ class Client {
 
                     this.log(LoggerLevel.debug, `[department.batchExchange] Chunk ${index + 1} completed: code=${response.data.code}`);
                     this.log(LoggerLevel.trace, `[department.batchExchange] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
-                    return response.data.data;
+
+                    if (response.data.code !== '0') {
+                        this.log(LoggerLevel.error, `[department.batchExchange] Error exchanging departments: code=${response.data.code}, msg=${response.data.msg}`);
+                        throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
+                    }
+
+                    return response.data.data || [];
                 });
 
                 results.push(...res);
@@ -881,6 +912,11 @@ class Client {
                 const pageRes = await functionLimiter(async () => {
                     const res = await this.page.list({ limit, offset });
 
+                    if (res.code !== '0') {
+                        this.log(LoggerLevel.error, `[page.listWithIterator] Error fetching pages: code=${res.code}, msg=${res.msg}`);
+                        throw new Error(res.msg || `Fetch failed with code ${res.code}`);
+                    }
+
                     page += 1;
 
                     if (res.data && Array.isArray(res.data.items)) {
@@ -888,7 +924,7 @@ class Client {
                     }
 
                     if (page === 1) {
-                        total = res.data.total || 0;
+                        total = res.data?.total || 0;
                         totalPages = Math.ceil(total / limit);
                         this.log(LoggerLevel.info, `[page.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
                     }
@@ -900,7 +936,7 @@ class Client {
                     const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
                     this.log(LoggerLevel.info, `[page.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
-                    this.log(LoggerLevel.debug, `[page.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                    this.log(LoggerLevel.debug, `[page.listWithIterator] Page ${page} details: items=${res.data?.items?.length}, offset=${offset}`);
                     this.log(LoggerLevel.trace, `[page.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                     return res;
@@ -1206,6 +1242,11 @@ class Client {
 
                         const res = await this.global.options.list(requestParams);
 
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[global.options.listWithIterator] Error fetching global options: code=${res.code}, msg=${res.msg}`);
+                            throw new Error(res.msg || `Fetch failed with code ${res.code}`);
+                        }
+
                         page += 1;
 
                         if (res.data && Array.isArray(res.data.items)) {
@@ -1213,7 +1254,7 @@ class Client {
                         }
 
                         if (page === 1) {
-                            total = res.data.total || 0;
+                            total = res.data?.total || 0;
                             totalPages = Math.ceil(total / limit);
                             this.log(LoggerLevel.info, `[global.options.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
                         }
@@ -1225,7 +1266,7 @@ class Client {
                         const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
                         this.log(LoggerLevel.info, `[global.options.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
-                        this.log(LoggerLevel.debug, `[global.options.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                        this.log(LoggerLevel.debug, `[global.options.listWithIterator] Page ${page} details: items=${res.data?.items?.length}, offset=${offset}`);
                         this.log(LoggerLevel.trace, `[global.options.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
@@ -1320,6 +1361,11 @@ class Client {
 
                         const res = await this.global.variables.list(requestParams);
 
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[global.variables.listWithIterator] Error fetching global variables: code=${res.code}, msg=${res.msg}`);
+                            throw new Error(res.msg || `Fetch failed with code ${res.code}`);
+                        }
+
                         page += 1;
 
                         if (res.data && Array.isArray(res.data.items)) {
@@ -1327,7 +1373,7 @@ class Client {
                         }
 
                         if (page === 1) {
-                            total = res.data.total || 0;
+                            total = res.data?.total || 0;
                             totalPages = Math.ceil(total / limit);
                             this.log(LoggerLevel.info, `[global.variables.listWithIterator] Starting paginated query: total=${total}, pages=${totalPages}`);
                         }
@@ -1339,7 +1385,7 @@ class Client {
                         const totalPagesStr = totalPages.toString().padStart(padLength, '0');
 
                         this.log(LoggerLevel.info, `[global.variables.listWithIterator] Page completed: [${pageStr}/${totalPagesStr}]`);
-                        this.log(LoggerLevel.debug, `[global.variables.listWithIterator] Page ${page} details: items=${res.data.items?.length}, offset=${offset}`);
+                        this.log(LoggerLevel.debug, `[global.variables.listWithIterator] Page ${page} details: items=${res.data?.items?.length}, offset=${offset}`);
                         this.log(LoggerLevel.trace, `[global.variables.listWithIterator] Page ${page} data: ${JSON.stringify(res.data?.items)}`);
 
                         return res;
