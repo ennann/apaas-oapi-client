@@ -25,3 +25,10 @@
 
 ```bash
 npm install apaas-oapi-client
+```
+
+---
+
+## 📖 **使用文档**
+
+- 完整说明、初始化示例与 API 用法请查看 [UserManual.md](./UserManual.md)。
