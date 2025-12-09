@@ -433,9 +433,15 @@ class Client {
              * 分批创建所有记录 - 支持超过 100 条数据，自动拆分
              * @description 创建多条记录到指定对象中，超过 100 条数据会自动拆分为多次请求
              * @param params 请求参数 { object_name, records, limit }
-             * @returns { total, items }
+             * @returns { total, success, failed, successCount, failedCount }
              */
-            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<{ total: number; items: any[] }> => {
+            recordsWithIterator: async (params: { object_name: string; records: any[]; limit?: number }): Promise<{
+                total: number;
+                success: Array<{ _id: string; success: true }>;
+                failed: Array<{ _id: string; success: false; error?: string }>;
+                successCount: number;
+                failedCount: number;
+            }> => {
                 const { object_name, records, limit = 100 } = params;
 
                 // 参数校验
@@ -446,14 +452,10 @@ class Client {
                 
                 if (records.length === 0) {
                     this.log(LoggerLevel.warn, '[object.create.recordsWithIterator] Empty records array provided, returning empty result');
-                    return { total: 0, items: [] };
+                    return { total: 0, success: [], failed: [], successCount: 0, failedCount: 0 };
                 }
 
-                let results: any[] = [];
-                let total = records.length;
                 const chunkSize = limit;
-                let page = 0;
-
                 const chunks: any[][] = [];
                 for (let i = 0; i < records.length; i += chunkSize) {
                     chunks.push(records.slice(i, i + chunkSize));
@@ -461,38 +463,70 @@ class Client {
 
                 this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunking ${records.length} records into ${chunks.length} groups of ${chunkSize}`);
 
-                for (const [index, chunk] of chunks.entries()) {
-                    page += 1;
+                const successItems: Array<{ _id: string; success: true }> = [];
+                const failedItems: Array<{ _id: string; success: false; error?: string }> = [];
 
+                for (const [index, chunk] of chunks.entries()) {
                     this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
-                    const pageRes = await functionLimiter(async () => {
-                        const res = await this.object.create.records({
-                            object_name,
-                            records: chunk
+                    try {
+                        const res = await functionLimiter(async () => {
+                            return await this.object.create.records({
+                                object_name,
+                                records: chunk
+                            });
                         });
 
                         if (res.code !== '0') {
-                            this.log(LoggerLevel.error, `[object.create.recordsWithIterator] Error creating records: code=${res.code}, msg=${res.msg}`);
-                            // Should we throw? Probably yes, to stop partial creation or notify user.
-                            // But maybe user wants partial success?
-                            // Given other methods throw, I'll throw here too.
-                            throw new Error(res.msg || `Creation failed with code ${res.code}`);
+                            this.log(LoggerLevel.error, `[object.create.recordsWithIterator] Chunk ${index + 1} failed: code=${res.code}, msg=${res.msg}`);
+                            // 整个批次失败，将这批次的所有记录标记为失败
+                            chunk.forEach((record: any) => {
+                                failedItems.push({
+                                    _id: record._id || 'unknown',
+                                    success: false,
+                                    error: res.msg || `Creation failed with code ${res.code}`
+                                });
+                            });
+                            continue;
                         }
 
+                        // 处理响应中的 items
                         if (res.data && Array.isArray(res.data.items)) {
-                            results = results.concat(res.data.items);
+                            res.data.items.forEach((item: any) => {
+                                if (item.success !== false) {
+                                    successItems.push(item);
+                                } else {
+                                    failedItems.push(item);
+                                }
+                            });
                         }
 
-                        this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Chunk ${page} completed: ${object_name}, created=${res.data?.items?.length}`);
-                        this.log(LoggerLevel.debug, `[object.create.recordsWithIterator] Chunk ${page} result: ${object_name}, code=${res.code}`);
-                        this.log(LoggerLevel.trace, `[object.create.recordsWithIterator] Chunk ${page} data: ${JSON.stringify(res.data?.items)}`);
-
-                        return res;
-                    });
+                        this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, success=${res.data?.items?.filter((i: any) => i.success !== false).length}, failed=${res.data?.items?.filter((i: any) => i.success === false).length}`);
+                        this.log(LoggerLevel.trace, `[object.create.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(res)}`);
+                    } catch (error) {
+                        this.log(LoggerLevel.error, `[object.create.recordsWithIterator] Chunk ${index + 1} threw error: ${error}`);
+                        // 整个批次异常，将这批次的所有记录标记为失败
+                        chunk.forEach((record: any) => {
+                            failedItems.push({
+                                _id: record._id || 'unknown',
+                                success: false,
+                                error: error instanceof Error ? error.message : String(error)
+                            });
+                        });
+                    }
                 }
 
-                return { total, items: results };
+                const result = {
+                    total: records.length,
+                    success: successItems,
+                    failed: failedItems,
+                    successCount: successItems.length,
+                    failedCount: failedItems.length
+                };
+
+                this.log(LoggerLevel.info, `[object.create.recordsWithIterator] Create completed: total=${result.total}, success=${result.successCount}, failed=${result.failedCount}`);
+
+                return result;
             }
         },
 
@@ -653,7 +687,7 @@ class Client {
             /**
              * 单条删除
              * @description 删除指定对象下的单条记录
-             * @param params 请求参数
+             * @param params 请求参数，包含 object_name 和 record_id
              * @returns 接口返回结果
              */
             record: async (params: { object_name: string; record_id: string }): Promise<any> => {
@@ -681,7 +715,7 @@ class Client {
             /**
              * 多条删除 - 最多传入 100 条
              * @description 删除指定对象下的多条记录
-             * @param params 请求参数
+             * @param params 请求参数，包含 object_name 和 ids 数组
              * @returns 接口返回结果
              */
             records: async (params: { object_name: string; ids: string[] }): Promise<any> => {
@@ -711,10 +745,16 @@ class Client {
             /**
              * 批量删除
              * @description 删除指定对象下的多条记录，超过 100 条数据会自动拆分为多次请求
-             * @param params 请求参数
-             * @returns 所有子请求的返回结果数组
+             * @param params 请求参数，包含 object_name, ids 数组 和 可选的 limit
+             * @returns { total, success, failed, successCount, failedCount }
              */
-            recordsWithIterator: async (params: { object_name: string; ids: string[]; limit?: number }): Promise<any[]> => {
+            recordsWithIterator: async (params: { object_name: string; ids: string[]; limit?: number }): Promise<{
+                total: number;
+                success: Array<{ _id: string; success: true }>;
+                failed: Array<{ _id: string; success: false; error?: string }>;
+                successCount: number;
+                failedCount: number;
+            }> => {
                 const { object_name, ids, limit = 100 } = params;
                 
                 // 参数校验
@@ -725,7 +765,7 @@ class Client {
                 
                 if (ids.length === 0) {
                     this.log(LoggerLevel.warn, '[object.delete.recordsWithIterator] Empty ids array provided, returning empty result');
-                    return [];
+                    return { total: 0, success: [], failed: [], successCount: 0, failedCount: 0 };
                 }
                 
                 const url = `/v1/data/namespaces/${this.namespace}/objects/${object_name}/records_batch`;
@@ -738,27 +778,67 @@ class Client {
 
                 this.log(LoggerLevel.debug, `[object.delete.recordsWithIterator] Chunking ${ids.length} records into ${chunks.length} groups of ${chunkSize}`);
 
-                const results: any[] = [];
+                const successItems: Array<{ _id: string; success: true }> = [];
+                const failedItems: Array<{ _id: string; success: false; error?: string }> = [];
+
                 for (const [index, chunk] of chunks.entries()) {
                     this.log(LoggerLevel.info, `[object.delete.recordsWithIterator] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} records`);
 
-                    const res = await functionLimiter(async () => {
-                        await this.ensureTokenValid();
-
-                        const response = await this.axiosInstance.delete(url, {
-                            headers: { Authorization: `${this.accessToken}` },
-                            data: { ids: chunk }
+                    try {
+                        const res = await this.object.delete.records({
+                            object_name,
+                            ids: chunk
                         });
 
-                        this.log(LoggerLevel.debug, `[object.delete.recordsWithIterator] Chunk ${index + 1} completed: code=${response.data.code}`);
-                        this.log(LoggerLevel.trace, `[object.delete.recordsWithIterator] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
-                        return response.data;
-                    });
+                        if (res.code !== '0') {
+                            this.log(LoggerLevel.error, `[object.delete.recordsWithIterator] Chunk ${index + 1} failed: code=${res.code}, msg=${res.msg}`);
+                            // 整个批次失败，将这批次的所有 ID 标记为失败
+                            chunk.forEach((id: string) => {
+                                failedItems.push({
+                                    _id: id,
+                                    success: false,
+                                    error: res.msg || `Delete failed with code ${res.code}`
+                                });
+                            });
+                            continue;
+                        }
 
-                    results.push(res);
+                        // 处理响应中的 items
+                        if (res.data && Array.isArray(res.data.items)) {
+                            res.data.items.forEach((item: any) => {
+                                if (item.success) {
+                                    successItems.push(item);
+                                } else {
+                                    failedItems.push(item);
+                                }
+                            });
+                        }
+
+                        this.log(LoggerLevel.debug, `[object.delete.recordsWithIterator] Chunk ${index + 1} completed: ${object_name}, success=${res.data?.items?.filter((i: any) => i.success).length}, failed=${res.data?.items?.filter((i: any) => !i.success).length}`);
+                    } catch (error) {
+                        this.log(LoggerLevel.error, `[object.delete.recordsWithIterator] Chunk ${index + 1} threw error: ${error}`);
+                        // 整个批次异常，将这批次的所有 ID 标记为失败
+                        chunk.forEach((id: string) => {
+                            failedItems.push({
+                                _id: id,
+                                success: false,
+                                error: error instanceof Error ? error.message : String(error)
+                            });
+                        });
+                    }
                 }
 
-                return results;
+                const result = {
+                    total: ids.length,
+                    success: successItems,
+                    failed: failedItems,
+                    successCount: successItems.length,
+                    failedCount: failedItems.length
+                };
+
+                this.log(LoggerLevel.info, `[object.delete.recordsWithIterator] Delete completed: total=${result.total}, success=${result.successCount}, failed=${result.failedCount}`);
+
+                return result;
             }
         }
     };
