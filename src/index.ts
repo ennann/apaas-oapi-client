@@ -1,7 +1,120 @@
 import dayjs from 'dayjs';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import { LoggerLevel } from './logger';
 import { functionLimiter } from './limiter';
+
+/**
+ * 批量操作结果
+ */
+interface BatchResult<T> {
+    /** 成功的项 */
+    success: T[];
+    /** 失败的项 */
+    failed: Array<{ id: string; error: string }>;
+    /** 成功数量 */
+    successCount: number;
+    /** 失败数量 */
+    failedCount: number;
+    /** 总数 */
+    total: number;
+}
+
+/**
+ * 重试配置
+ */
+interface RetryOptions {
+    /** 最大重试次数 */
+    maxRetries?: number;
+    /** 初始延迟时间(ms) */
+    initialDelay?: number;
+    /** 最大延迟时间(ms) */
+    maxDelay?: number;
+    /** 延迟倍数 */
+    backoffMultiplier?: number;
+}
+
+/**
+ * 判断错误是否可重试
+ */
+function isRetryableError(error: any): boolean {
+    // 网络错误
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+        return true;
+    }
+
+    // Axios 错误
+    if (axios.isAxiosError(error)) {
+        const axiosError = error as AxiosError;
+        // 没有响应(网络错误)
+        if (!axiosError.response) {
+            return true;
+        }
+        // 5xx 服务器错误
+        if (axiosError.response.status >= 500) {
+            return true;
+        }
+        // 429 限流
+        if (axiosError.response.status === 429) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * 带重试的函数执行
+ */
+async function executeWithRetry<T>(
+    fn: () => Promise<T>,
+    options: RetryOptions = {},
+    logContext: string = '',
+    logger?: (level: LoggerLevel, ...args: any[]) => void
+): Promise<T> {
+    const {
+        maxRetries = 3,
+        initialDelay = 1000,
+        maxDelay = 10000,
+        backoffMultiplier = 2
+    } = options;
+
+    let lastError: any;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            lastError = error;
+
+            // 最后一次尝试，直接抛出
+            if (attempt === maxRetries) {
+                break;
+            }
+
+            // 判断是否可重试
+            if (!isRetryableError(error)) {
+                throw error;
+            }
+
+            // 计算延迟时间(指数退避)
+            const delay = Math.min(initialDelay * Math.pow(backoffMultiplier, attempt), maxDelay);
+
+            if (logger) {
+                logger(
+                    LoggerLevel.warn,
+                    `${logContext} Attempt ${attempt + 1}/${maxRetries + 1} failed, retrying in ${delay}ms...`,
+                    error instanceof Error ? error.message : String(error)
+                );
+            }
+
+            // 等待后重试
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+
+    // 所有重试都失败
+    throw lastError;
+}
 
 /**
  * Client 初始化配置
@@ -894,10 +1007,14 @@ class Client {
         /**
          * 批量部门 ID 交换
          * @param params 请求参数
-         * @returns 所有子请求的返回结果数组
+         * @returns 批量操作结果，包含成功和失败的详细信息
          */
-        batchExchange: async (params: { department_id_type: 'department_id' | 'external_department_id' | 'external_open_department_id'; department_ids: string[] }): Promise<any[]> => {
-            const { department_id_type, department_ids } = params;
+        batchExchange: async (params: {
+            department_id_type: 'department_id' | 'external_department_id' | 'external_open_department_id';
+            department_ids: string[];
+            retryOptions?: RetryOptions;
+        }): Promise<BatchResult<any>> => {
+            const { department_id_type, department_ids, retryOptions } = params;
             // department_id_type 可选值：
             // - 'department_id' (如 "1758534140403815")
             // - 'external_department_id' (外部平台 department_id, 无固定格式)
@@ -908,15 +1025,15 @@ class Client {
                 this.log(LoggerLevel.error, '[department.batchExchange] Invalid department_ids parameter: must be a non-empty array');
                 throw new Error('参数 department_ids 必须是一个数组');
             }
-            
+
             if (department_ids.length === 0) {
                 this.log(LoggerLevel.warn, '[department.batchExchange] Empty department_ids array provided, returning empty result');
-                return [];
+                return { success: [], failed: [], successCount: 0, failedCount: 0, total: 0 };
             }
 
             const url = '/api/integration/v2/feishu/getDepartments';
 
-            const chunkSize = 100;
+            const chunkSize = 200; // 最大支持200个
             const chunks: string[][] = [];
             for (let i = 0; i < department_ids.length; i += chunkSize) {
                 chunks.push(department_ids.slice(i, i + chunkSize));
@@ -924,39 +1041,231 @@ class Client {
 
             this.log(LoggerLevel.info, `[department.batchExchange] Chunking ${department_ids.length} department IDs into ${chunks.length} groups of ${chunkSize}`);
 
-            const results: any[] = [];
+            const successResults: any[] = [];
+            const failedResults: Array<{ id: string; error: string }> = [];
+
             for (const [index, chunk] of chunks.entries()) {
                 this.log(LoggerLevel.info, `[department.batchExchange] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} IDs`);
 
-                const res = await functionLimiter(async () => {
-                    await this.ensureTokenValid();
+                try {
+                    const res = await executeWithRetry(
+                        async () => {
+                            return await functionLimiter(async () => {
+                                await this.ensureTokenValid();
 
-                    const response = await this.axiosInstance.post(
-                        url,
-                        {
-                            department_id_type,
-                            department_ids: chunk
+                                const response = await this.axiosInstance.post(
+                                    url,
+                                    {
+                                        department_id_type,
+                                        department_ids: chunk
+                                    },
+                                    {
+                                        headers: { Authorization: `${this.accessToken}` },
+                                        timeout: 30000 // 30秒超时
+                                    }
+                                );
+
+                                this.log(LoggerLevel.debug, `[department.batchExchange] Chunk ${index + 1} completed: code=${response.data.code}`);
+                                this.log(LoggerLevel.trace, `[department.batchExchange] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
+
+                                if (response.data.code !== '0') {
+                                    this.log(LoggerLevel.error, `[department.batchExchange] Error exchanging departments: code=${response.data.code}, msg=${response.data.msg}`);
+                                    throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
+                                }
+
+                                return response.data.data || [];
+                            });
                         },
-                        {
-                            headers: { Authorization: `${this.accessToken}` }
-                        }
+                        retryOptions,
+                        `[department.batchExchange] Chunk ${index + 1}/${chunks.length}`,
+                        this.log.bind(this)
                     );
 
-                    this.log(LoggerLevel.debug, `[department.batchExchange] Chunk ${index + 1} completed: code=${response.data.code}`);
-                    this.log(LoggerLevel.trace, `[department.batchExchange] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
+                    successResults.push(...res);
+                    this.log(LoggerLevel.info, `[department.batchExchange] Chunk ${index + 1} succeeded: ${res.length} departments`);
+                } catch (error) {
+                    // 部分失败：记录失败的chunk
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    this.log(LoggerLevel.error, `[department.batchExchange] Chunk ${index + 1} failed after retries: ${errorMsg}`);
 
-                    if (response.data.code !== '0') {
-                        this.log(LoggerLevel.error, `[department.batchExchange] Error exchanging departments: code=${response.data.code}, msg=${response.data.msg}`);
-                        throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
-                    }
-
-                    return response.data.data || [];
-                });
-
-                results.push(...res);
+                    chunk.forEach(id => {
+                        failedResults.push({
+                            id,
+                            error: errorMsg
+                        });
+                    });
+                }
             }
 
-            return results;
+            const result: BatchResult<any> = {
+                success: successResults,
+                failed: failedResults,
+                successCount: successResults.length,
+                failedCount: failedResults.length,
+                total: department_ids.length
+            };
+
+            this.log(LoggerLevel.info, `[department.batchExchange] Completed: total=${result.total}, success=${result.successCount}, failed=${result.failedCount}`);
+
+            return result;
+        }
+    };
+
+    /**
+     * 用户 ID 交换模块
+     */
+    public user = {
+        /**
+         * 单个用户 ID 交换
+         * @param params 请求参数
+         * @returns 单个用户映射结果
+         */
+        exchange: async (params: { user_id_type: 'user_id' | 'external_user_id' | 'external_open_id'; user_id: string; feishu_app_id: string }): Promise<any> => {
+            const { user_id_type, user_id, feishu_app_id } = params;
+            // user_id_type 可选值：
+            // - 'user_id' (如 "1758534140403815")
+            // - 'external_user_id' (外部平台 user_id, 无固定格式)
+            // - 'external_open_id' (以 'ou_' 开头的 open_id)
+
+            const url = '/api/integration/v2/feishu/getUsers';
+
+            this.log(LoggerLevel.info, `[user.exchange] Exchanging user ID: ${user_id}`);
+
+            const res = await functionLimiter(async () => {
+                await this.ensureTokenValid();
+
+                const response = await this.axiosInstance.post(
+                    url,
+                    {
+                        user_id_type,
+                        feishu_app_id,
+                        user_ids: [user_id]
+                    },
+                    {
+                        headers: { Authorization: `${this.accessToken}` }
+                    }
+                );
+
+                this.log(LoggerLevel.debug, `[user.exchange] User ID exchanged: ${user_id}, code=${response.data.code}`);
+                this.log(LoggerLevel.trace, `[user.exchange] Response: ${JSON.stringify(response.data)}`);
+
+                if (response.data.code !== '0') {
+                    this.log(LoggerLevel.error, `[user.exchange] Error exchanging user: code=${response.data.code}, msg=${response.data.msg}`);
+                    throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
+                }
+
+                return response.data.data && response.data.data[0]; // 返回第一个元素
+            });
+
+            return res;
+        },
+
+        /**
+         * 批量用户 ID 交换
+         * @param params 请求参数
+         * @returns 批量操作结果，包含成功和失败的详细信息
+         */
+        batchExchange: async (params: {
+            user_id_type: 'user_id' | 'external_user_id' | 'external_open_id';
+            user_ids: string[];
+            feishu_app_id: string;
+            retryOptions?: RetryOptions;
+        }): Promise<BatchResult<any>> => {
+            const { user_id_type, user_ids, feishu_app_id, retryOptions } = params;
+            // user_id_type 可选值：
+            // - 'user_id' (如 "1758534140403815")
+            // - 'external_user_id' (外部平台 user_id, 无固定格式)
+            // - 'external_open_id' (以 'ou_' 开头的 open_id)
+
+            // 参数校验
+            if (!user_ids || !Array.isArray(user_ids)) {
+                this.log(LoggerLevel.error, '[user.batchExchange] Invalid user_ids parameter: must be a non-empty array');
+                throw new Error('参数 user_ids 必须是一个数组');
+            }
+
+            if (user_ids.length === 0) {
+                this.log(LoggerLevel.warn, '[user.batchExchange] Empty user_ids array provided, returning empty result');
+                return { success: [], failed: [], successCount: 0, failedCount: 0, total: 0 };
+            }
+
+            const url = '/api/integration/v2/feishu/getUsers';
+
+            const chunkSize = 200; // 最大支持200个
+            const chunks: string[][] = [];
+            for (let i = 0; i < user_ids.length; i += chunkSize) {
+                chunks.push(user_ids.slice(i, i + chunkSize));
+            }
+
+            this.log(LoggerLevel.info, `[user.batchExchange] Chunking ${user_ids.length} user IDs into ${chunks.length} groups of ${chunkSize}`);
+
+            const successResults: any[] = [];
+            const failedResults: Array<{ id: string; error: string }> = [];
+
+            for (const [index, chunk] of chunks.entries()) {
+                this.log(LoggerLevel.info, `[user.batchExchange] Processing chunk ${index + 1}/${chunks.length}: ${chunk.length} IDs`);
+
+                try {
+                    const res = await executeWithRetry(
+                        async () => {
+                            return await functionLimiter(async () => {
+                                await this.ensureTokenValid();
+
+                                const response = await this.axiosInstance.post(
+                                    url,
+                                    {
+                                        user_id_type,
+                                        feishu_app_id,
+                                        user_ids: chunk
+                                    },
+                                    {
+                                        headers: { Authorization: `${this.accessToken}` },
+                                        timeout: 30000 // 30秒超时
+                                    }
+                                );
+
+                                this.log(LoggerLevel.debug, `[user.batchExchange] Chunk ${index + 1} completed: code=${response.data.code}`);
+                                this.log(LoggerLevel.trace, `[user.batchExchange] Chunk ${index + 1} response: ${JSON.stringify(response.data)}`);
+
+                                if (response.data.code !== '0') {
+                                    this.log(LoggerLevel.error, `[user.batchExchange] Error exchanging users: code=${response.data.code}, msg=${response.data.msg}`);
+                                    throw new Error(response.data.msg || `Exchange failed with code ${response.data.code}`);
+                                }
+
+                                return response.data.data || [];
+                            });
+                        },
+                        retryOptions,
+                        `[user.batchExchange] Chunk ${index + 1}/${chunks.length}`,
+                        this.log.bind(this)
+                    );
+
+                    successResults.push(...res);
+                    this.log(LoggerLevel.info, `[user.batchExchange] Chunk ${index + 1} succeeded: ${res.length} users`);
+                } catch (error) {
+                    // 部分失败：记录失败的chunk
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    this.log(LoggerLevel.error, `[user.batchExchange] Chunk ${index + 1} failed after retries: ${errorMsg}`);
+
+                    chunk.forEach(id => {
+                        failedResults.push({
+                            id,
+                            error: errorMsg
+                        });
+                    });
+                }
+            }
+
+            const result: BatchResult<any> = {
+                success: successResults,
+                failed: failedResults,
+                successCount: successResults.length,
+                failedCount: failedResults.length,
+                total: user_ids.length
+            };
+
+            this.log(LoggerLevel.info, `[user.batchExchange] Completed: total=${result.total}, success=${result.successCount}, failed=${result.failedCount}`);
+
+            return result;
         }
     };
 
@@ -1628,3 +1937,5 @@ class Client {
 export const apaas = {
     Client
 };
+
+export type { BatchResult, RetryOptions };
